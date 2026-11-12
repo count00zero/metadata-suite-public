@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0ea5c6"/><stop offset="1" stop-color="#173b8f"/></linearGradient>
+<linearGradient id="pin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d7eefc"/></linearGradient>
+</defs>
+<clipPath id="r"><rect width="512" height="512" rx="112"/></clipPath>
+<rect width="512" height="512" rx="112" fill="url(#bg)"/>
+<g clip-path="url(#r)">
+<path d="M0 410c60-26 120-26 180 0s120 26 180 0 110-22 152-4v106H0z" fill="#0b2a6b" opacity=".55"/></g>
+<g fill="none" stroke="#fff" stroke-linecap="round">
+<ellipse cx="256" cy="392" rx="170" ry="46" stroke-width="14" opacity=".28"/>
+<ellipse cx="256" cy="392" rx="112" ry="30" stroke-width="16" opacity=".5"/>
+</g>
+<path d="M256 70c-66 0-116 49-116 111 0 82 116 212 116 212s116-130 116-212c0-62-50-111-116-111z" fill="url(#pin)"/>
+<circle cx="256" cy="180" r="48" fill="#173b8f"/>
+<path d="M256 140l14 34 34 14-34 14-14 34-14-34-34-14 34-14z" fill="#fff"/>
+</svg>

@@ -1,0 +1,22 @@
+# sights-import -- builds the own sights database from the OpenStreetMap planet file (read-only) and fills it with
+# Wikidata facts. NOT started with the stack; run it on demand:
+#   docker compose --profile import build sights-import
+#   docker compose --profile import run --rm sights-import all        (or: build | wikidata | status)
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    GEO_CACHE_DB=/data/geo-cache.sqlite
+
+RUN apt-get update && apt-get install -y --no-install-recommends osmium-tool \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /srv
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY app ./app
+
+VOLUME /data
+ENTRYPOINT ["python", "-m", "app.sightsindex"]
+CMD ["status"]

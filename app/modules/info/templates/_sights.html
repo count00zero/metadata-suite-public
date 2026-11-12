@@ -1,0 +1,38 @@
+{% if not s.ok %}
+<p class="muted">{{ s.error }}</p>
+{% else %}{% set d = s.data %}
+{% if not d.available %}
+<p class="muted">Kein Index vorhanden – <code>/sights</code> nutzt Photon. Aufbauen: <code>docker compose --profile import run --rm sights-import all</code>. Datenstand: <code>{{ d.place_version }}</code></p>
+{% else %}
+<div class="info-table">
+  <div class="info-row"><span class="dot ok"></span><span class="info-k">Sehenswürdigkeiten</span><span class="info-v mono"><b>{{ "{:,}".format(d.sights).replace(",", ".") }}</b></span><span class="info-note muted">aus {{ d.source or "?" }}, gebaut {{ d.built or "?" }}</span></div>
+  <div class="info-row"><span class="dot {{ 'ok' if d.wikidata_done == d.with_wikidata else 'warn' }}"></span><span class="info-k">Wikidata</span><span class="info-v mono"><b>{{ "{:,}".format(d.wikidata_done).replace(",", ".") }}</b> / {{ "{:,}".format(d.with_wikidata).replace(",", ".") }}</span><span class="info-note muted">Lauf {{ d.wikidata_run or "noch nie" }}</span></div>
+  <div class="info-row"><span class="dot {{ 'ok' if d.with_importance else 'warn' }}"></span><span class="info-k">Wikimedia-Wichtigkeit</span><span class="info-v mono"><b>{{ "{:,}".format(d.with_importance or 0).replace(",", ".") }}</b></span><span class="info-note muted">Lauf {{ d.importance_run or "noch nie" }}</span></div>
+  <div class="info-row"><span class="dot {{ 'ok' if d.wikipedia_extracts else 'muted' }}"></span><span class="info-k">Wikipedia-Kurztexte</span><span class="info-v mono"><b>{{ "{:,}".format(d.wikipedia_extracts or 0).replace(",", ".") }}</b></span><span class="info-note muted">Lauf {{ d.wikitext_run or "noch nie" }}</span></div>
+  <div class="info-row"><span class="dot {{ 'ok' if d.descriptions_translated else 'muted' }}"></span><span class="info-k">Übersetzte Beschreibungen (LLM)</span><span class="info-v mono"><b>{{ "{:,}".format(d.descriptions_translated or 0).replace(",", ".") }}</b></span><span class="info-note muted">Befehl <code>translate</code></span></div>
+  <div class="info-row"><span class="dot ok"></span><span class="info-k">Datenstand der Orte</span><span class="info-v mono">{{ d.place_version }}</span><span class="info-note muted">steht in den Sidecars (CtxPlaceVersion); ändert er sich, bietet „Kontext nachfüllen“ die Dateien wieder an</span></div>
+</div>
+{% endif %}
+{% set r = d.refresh %}
+<h3 class="info-h3" style="margin-top:1em">Automatische Aktualisierung</h3>
+{% if not r %}
+<p class="muted">Noch kein automatischer Lauf. Einschalten: <code>GEO_SIGHTS_REFRESH_DAYS</code> in der .env, dann <code>docker compose --profile refresh up -d sights-refresh</code>.</p>
+{% else %}
+<p>Letzter Lauf: <b>{{ r.started }}</b> bis {{ r.finished }} –
+  <span class="info-badge {{ 'ok' if r.ok else 'bad' }}">{{ 'alles ok' if r.ok else 'Fehler in einem Schritt' }}</span>
+  {% if r.next_due %}· nächster Lauf <b>{{ r.next_due }}</b>{% endif %}</p>
+<div class="info-table">
+  {% for st in r.steps %}
+  <div class="info-row"><span class="dot {{ 'ok' if st.status == 'ok' else ('muted' if st.status == 'skipped' else 'bad') }}"></span><span class="info-k">{{ st.name }}</span><span class="info-v mono">{{ st.status }}{% if st.seconds %} · {{ st.seconds }} s{% endif %}</span><span class="info-note muted">{{ st.detail }}</span></div>
+  {% endfor %}
+</div>
+{% if s.downloads %}
+<h3 class="info-h3" style="margin-top:1em">Heruntergeladene Dateien <span class="muted">(behalten: neueste + letzte erfolgreich genutzte)</span></h3>
+<div class="info-table">
+  {% for f in s.downloads %}
+  <div class="info-row"><span class="dot {{ 'ok' if f.used else 'warn' }}"></span><span class="info-k">{{ f.kind }}</span><span class="info-v mono">{{ f.file }}</span><span class="info-note muted">{{ f.date }} · {{ ('erfolgreich genutzt ' ~ f.used) if f.used else 'noch nicht genutzt' }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+{% endif %}

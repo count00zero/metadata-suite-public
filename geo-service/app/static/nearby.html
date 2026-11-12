@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>In der Nähe</title>
+<link rel="manifest" href="/nearby.webmanifest">
+<meta name="theme-color" content="#2563eb">
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --fg:#1b1f24; --mut:#6b7280; --line:#d8dce2; --acc:#2563eb; --acc-fg:#fff; --err:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14171b; --card:#1d2127; --fg:#e6e8eb; --mut:#98a1ad; --line:#363c45; --acc:#5b8def; --acc-fg:#0b0d10; --err:#ff8a80; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { margin: 0 auto; padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 19px; margin: 4px 0 10px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+  input, select, button { padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); font:inherit; min-width:0; }
+  input.wide { flex:1 1 200px; }
+  button { cursor:pointer; } button.primary { background:var(--acc); color:var(--acc-fg); border-color:var(--acc); }
+  /* portrait / narrow: the map uses the full width and about half the screen height, the list follows below in columns */
+  #map { height: clamp(300px, 55vh, 720px); border:1px solid var(--line); border-radius:10px; margin-bottom:10px; }
+  ol { display:grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap:0 10px; align-items:start; }
+  /* landscape and wide: list on the left, the map fills the rest of the screen, full height */
+  @media (min-width: 900px) and (orientation: landscape) {
+    :root { --side: clamp(440px, 30vw, 600px); }
+    main { width: var(--side); max-width: var(--side); margin: 0; }
+    ol { display:block; }
+    #map { position: fixed; top: 0; right: 0; bottom: 0; left: var(--side); height: auto; border-radius: 0; border-width: 0 0 0 1px; margin: 0; z-index: 0; }
+  }
+  .hint { color:var(--mut); font-size:13px; } .err { color:var(--err); }
+  ol { list-style:none; margin:0; padding:0; }
+  li.s { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; cursor:pointer; }
+  li.s h3 { margin:0; font-size:16px; } .meta { color:var(--mut); font-size:13px; }
+  .dir { display:inline-block; transition:transform .2s; } .desc { margin-top:4px; font-size:14px; }
+  a { color:var(--acc); }
+</style>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+</head>
+<body>
+<main>
+  <h1>In der Nähe</h1>
+  <div class="row">
+    <button class="primary" id="loc">📍 Mein Standort</button>
+    <input type="text" id="q" class="wide" placeholder="Ort oder Adresse" enterkeyhint="search">
+    <button id="go">Suchen</button>
+  </div>
+  <div class="row">
+    <label>Umkreis <select id="radius"><option value="500">500 m</option><option value="1000">1 km</option><option value="2000" selected>2 km</option><option value="5000">5 km</option><option value="10000">10 km</option><option value="20000">20 km</option></select></label>
+    <label>Art <select id="cat"><option value="">alle</option><option>castle</option><option>museum</option><option>attraction</option><option>viewpoint</option><option>waterfall</option><option>peak</option><option>nature_reserve</option><option>zoo</option><option>theme_park</option><option>monument</option><option>ruins</option><option>religious</option><option>historic</option><option value="water">Gewässer (Flüsse, Seen)</option></select></label>
+    <label>Sortierung <select id="sort"><option value="score">Wichtigkeit</option><option value="distance">Entfernung</option></select></label>
+  </div>
+  <div id="map" hidden></div>
+  <div id="loc" class="hint" hidden></div>
+  <div id="status" class="hint">Standort freigeben, einen Ort eingeben oder auf der Karte einen Punkt setzen.</div>
+  <div id="maphint" class="hint" hidden>Punkt setzen: Rechtsklick, langes Drücken, Umschalt+Klick oder Taste P (an der Mausposition). Der Punkt lässt sich ziehen. Koordinaten wie „47.07, 15.44“ gehen auch im Suchfeld.</div>
+  <ol id="list"></ol>
+  <details id="authbox" hidden><summary class="hint">Token</summary><input type="password" id="token" placeholder="GEO_SERVICE_TOKEN" class="wide"> <button id="tokenok">OK</button></details>
+</main>
+<script>
+const CFG = /*GEO_UI_CONFIG*/{};
+const $ = id => document.getElementById(id);
+let token = ""; try { token = sessionStorage.getItem("geo-token") || ""; } catch (e) {}
+const urlTok = new URLSearchParams(location.search).get("token"); if (urlTok) token = urlTok;
+let map = null, layer = null, center = null, pin = null, mouse = null;
+
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+const fmtDist = m => m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(m < 10000 ? 1 : 0) + " km";
+
+async function api(path, params) {
+  const u = new URL(path, location.origin);
+  for (const [k, v] of Object.entries(params)) if (v !== "" && v != null) u.searchParams.set(k, v);
+  const r = await fetch(u, { headers: token ? { "X-Api-Key": token } : {} });
+  if (r.status === 401) { $("authbox").hidden = false; $("authbox").open = true; throw new Error("Token nötig oder falsch"); }
+  if (!r.ok) { let d = ""; try { d = (await r.json()).detail; } catch (e) {} throw new Error(typeof d === "string" && d ? d : "Fehler " + r.status); }
+  return r.json();
+}
+
+function ensureMap() {
+  if (map || !CFG.tileUrl || !window.L) return;
+  $("map").hidden = false; $("maphint").hidden = false;
+  map = L.map("map").setView([47.5, 14.5], 7);
+  L.tileLayer(CFG.tileUrl, { maxZoom: CFG.maxZoom || 19, attribution: CFG.attribution || "" }).addTo(map);
+  layer = L.layerGroup().addTo(map);
+  // set a point on the map: right click, long press (touch), Shift+click, or the key P (under the mouse, else map centre)
+  map.on("contextmenu", e => setPoint(e.latlng.lat, e.latlng.lng));
+  map.on("click", e => { if (e.originalEvent && e.originalEvent.shiftKey) setPoint(e.latlng.lat, e.latlng.lng); });
+  map.on("mousemove", e => { mouse = e.latlng; });
+  map.on("mouseout", () => { mouse = null; });
+}
+
+function fixSize() { if (map) setTimeout(() => map.invalidateSize(), 60); }
+window.addEventListener("resize", fixSize);
+window.addEventListener("orientationchange", fixSize);
+
+function setPoint(lat, lon) {
+  center = { lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6 };
+  $("q").value = "";
+  placePin();
+  search(center);
+}
+
+function placePin() {
+  if (!map || !center) return;
+  if (!pin) {
+    pin = L.marker([center.lat, center.lon], { draggable: true, title: "Gewählter Punkt (ziehbar)", zIndexOffset: 1000 }).addTo(map);
+    pin.on("dragend", () => { const p = pin.getLatLng(); setPoint(p.lat, p.lng); });
+  } else pin.setLatLng([center.lat, center.lon]);
+}
+
+// "47.0707, 15.4395" (also "47.0707 15.4395") typed into the search box is a position, not a place name
+function parseCoords(t) {
+  const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,; ]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(t);
+  if (!m) return null;
+  const lat = +m[1], lon = +m[2];
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+}
+
+// reverse geocoding of the chosen point: address / place / region / country (own request, so a slow geocoder never delays the list)
+let locSeq = 0;
+async function showLoc(c) {
+  const el = $("loc"), n = ++locSeq;
+  el.hidden = false; el.className = "hint"; el.textContent = "Ort wird ermittelt …";
+  try {
+    const g = await api("/reverse", { lat: c.lat, lon: c.lon });
+    if (n !== locSeq) return;
+    if (!g.found) { el.innerHTML = `📍 ${c.lat.toFixed(5)}, ${c.lon.toFixed(5)} · kein Ort gefunden`; return; }
+    const street = [g.street, g.house_number].filter(Boolean).join(" ");
+    const place = [g.postcode, g.city || g.locality].filter(Boolean).join(" ");
+    const rows = [["Adresse", street], ["Ort", place], ["Ortsteil", g.neighbourhood && g.neighbourhood !== g.city ? g.neighbourhood : (g.locality && g.locality !== g.city ? g.locality : "")],
+                  ["Bezirk", g.county], ["Bundesland", g.state], ["Land", g.country + (g.country_a ? " (" + g.country_a + ")" : "")]]
+      .filter(r => r[1]).map(r => `<b>${r[0]}:</b> ${esc(r[1])}`).join(" · ");
+    el.innerHTML = `📍 ${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}<br>${rows}<br><span class="hint">Quelle: ${esc(g.source || g.upstream_source || "?")}${g.cached ? " (Cache)" : ""}</span>`;
+  } catch (e) { if (n === locSeq) { el.className = "err"; el.textContent = "Ort: " + e.message; } }
+}
+
+function render(r) {
+  showLoc(r.center);
+  const ul = $("list"); ul.innerHTML = "";
+  $("status").className = "hint";
+  $("status").textContent = r.count ? r.count + " Treffer · " + (r.center.label || r.center.lat.toFixed(4) + ", " + r.center.lon.toFixed(4)) : "Nichts gefunden – größeren Umkreis wählen.";
+  ensureMap();
+  if (layer) { layer.clearLayers(); L.circleMarker([r.center.lat, r.center.lon], { radius: 7, color: "#2563eb" }).addTo(layer); }
+  if (map && !pin && center) placePin();
+  const pts = [[r.center.lat, r.center.lon]];
+  r.sights.forEach((s, i) => {
+    const li = document.createElement("li"); li.className = "s";
+    const links = [s.wikipedia_url && `<a href="${esc(s.wikipedia_url)}" target="_blank" rel="noopener">Wikipedia</a>`,
+                   s.website && `<a href="${esc(s.website)}" target="_blank" rel="noopener">Website</a>`,
+                   `<a href="geo:${s.lat},${s.lon}">In Karten-App</a>`].filter(Boolean).join(" · ");
+    li.innerHTML = `<h3>${esc(s.name)}</h3><div class="meta">${esc(s.kind || s.category)} · ${fmtDist(s.distance_m)} <span class="dir" style="transform:rotate(${s.bearing || 0}deg)">↑</span> ${esc(s.direction || "")}${s.opening_hours ? " · " + esc(s.opening_hours) : ""}</div>` +
+                   (s.description ? `<div class="desc">${esc(s.description)}</div>` : "") + (s.summary ? `<details class="sum"><summary>Mehr</summary><div class="desc">${esc(s.summary)}</div></details>` : "") + `<div class="meta">${links}</div>`;
+    li.onclick = ev => { if (ev.target.tagName !== "A" && map) map.setView([s.lat, s.lon], 17); };
+    ul.appendChild(li);
+    pts.push([s.lat, s.lon]);
+    if (layer) L.marker([s.lat, s.lon], { title: s.name }).bindPopup(esc(s.name)).addTo(layer);
+  });
+  if (map) map.fitBounds(pts, { padding: [24, 24], maxZoom: 16 });
+}
+
+async function search(params) {
+  $("status").className = "hint"; $("status").textContent = "Suche …";
+  try {
+    render(await api("/sights", { radius: $("radius").value, categories: $("cat").value, sort: $("sort").value, limit: 30, ...params }));
+  } catch (e) { $("status").className = "err"; $("status").textContent = e.message; }
+}
+
+$("loc").onclick = () => {
+  if (!navigator.geolocation) { $("status").textContent = "Dieser Browser kennt keine Standortfreigabe."; return; }
+  $("status").textContent = "Standort wird bestimmt …";
+  navigator.geolocation.getCurrentPosition(
+    p => { center = { lat: p.coords.latitude, lon: p.coords.longitude }; placePin(); search(center); },
+    e => { $("status").className = "err"; $("status").textContent = "Standort nicht verfügbar (" + e.message + "). Ort eingeben."; },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+};
+$("go").onclick = () => {
+  const q = $("q").value.trim(); if (!q) return;
+  const c = parseCoords(q);
+  if (c) { center = c; placePin(); search(center); } else { center = null; search({ q }); }
+};
+document.addEventListener("keydown", e => {
+  if (e.key.toLowerCase() !== "p" || e.ctrlKey || e.metaKey || e.altKey || !map) return;
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test((document.activeElement || {}).tagName)) return;
+  const p = mouse || map.getCenter();
+  setPoint(p.lat, p.lng);
+});
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") $("go").onclick(); });
+for (const id of ["radius", "cat", "sort"]) $(id).onchange = () => { if (center) search(center); else if ($("q").value.trim()) $("go").onclick(); };
+$("tokenok").onclick = () => { token = $("token").value.trim(); try { sessionStorage.setItem("geo-token", token); } catch (e) {} $("authbox").open = false; };
+
+if (CFG.tileUrl) {
+  const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "/ui-assets/leaflet/leaflet.css"; document.head.appendChild(l);
+  const sc = document.createElement("script"); sc.src = "/ui-assets/leaflet/leaflet.js"; sc.onload = ensureMap; document.head.appendChild(sc);
+}
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/nearby-sw.js").catch(() => {});
+</script>
+</body>
+</html>

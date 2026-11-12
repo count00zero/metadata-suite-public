@@ -1,0 +1,18 @@
+<div id="file-list-progress"
+     hx-get="{{ poll_url }}"
+     hx-trigger="load delay:400ms" hx-target="this" hx-swap="outerHTML">
+  <div class="progress-panel">
+    <div class="progress-row">
+      <span>
+        {% if job.phase %}{{ job.phase }}: {% endif -%}
+        {{ job.done }} / {{ job.total }} Video(s) verarbeitet
+        {%- if job.current_name %} — aktuell: {{ job.current_name }}{% endif %}
+      </span>
+      <button type="button" class="btn-ghost" id="progress-cancel-btn"
+              hx-post="{{ cancel_url }}" hx-swap="none"
+              title="Stoppt die Suche jetzt und zeigt die bisher gefundenen Videos an -- nichts geht verloren."
+              onclick="this.disabled=true; this.textContent='Wird gestoppt…';">Fertig -- bisherige Videos übernehmen</button>
+    </div>
+    <div class="progress-bar"><div class="progress-bar-fill" style="width: {{ job.pct }}%"></div></div>
+  </div>
+</div>

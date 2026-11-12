@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kontext nachfüllen — Metadata Suite</title>
+<script defer src="/static/htmx.min.js"></script>
+<script defer src="/static/clear-results.js"></script>
+<script src="/static/safe-observer.js"></script>
+<script defer src="/static/alpine.min.js"></script>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/favicon-192.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>🧩 Kontext nachfüllen</h1>
+  <nav class="modules-nav">
+    <a class="module-pill info-pill" href="/" title="Start (Dashboard)" aria-label="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></svg></a>
+    <a class="module-pill" href="/timestamp/">Timestamp</a>
+    <a class="module-pill" href="/gps/">GPS Sidecar</a>
+    <a class="module-pill" href="/gpsfill/">GPS füllen</a>
+    <a class="module-pill" href="/geooverrides/">Geo-Overrides</a>
+    <span class="module-pill active">Kontext nachfüllen</span>
+    <a class="module-pill" href="/ai/">AI-Beschreibung</a>
+    <a class="module-pill" href="/nfo/">NFO Maker</a>
+    <a class="module-pill" href="/collage/">Collage</a>
+    <a class="module-pill" href="/mtime/">Datei-Zeitstempel</a>
+    <a class="module-pill" href="/shortvideos/">Kurzvideos löschen</a>
+    <a class="module-pill" href="/year/">Jahreslauf</a>
+    <a class="module-pill info-pill" href="/endpoints/" title="Endpunkte des geo-service (Links mit deinen Beispielorten)" aria-label="Endpunkte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></a>
+    <a class="module-pill info-pill" href="/docs/" title="Dokumentation (README)" aria-label="Dokumentation"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 7.5h6"/><path d="M9.5 11h6"/></svg></a>
+    <a class="module-pill info-pill" href="/info/" title="Info: Versionen, Umgebung, Pfade" aria-label="Info"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></a>
+  </nav>
+</header>
+
+<main x-data="ctxFillApp()" x-init="initLastDepth(); initLastPath()">
+  <section class="panel">
+    <form id="browse-form" hx-post="/ctxfill/scan/start" hx-target="#file-list" hx-indicator="#browse-spinner">
+      <input type="hidden" name="handoff_id" value="{{ prefill_handoff_id or '' }}">
+      <div class="field-grid">
+        <div class="path-row">
+          <label class="root-folder-field">
+            <span class="label-text">Basis-Ordner
+              <span class="info-icon" tabindex="0" title="Wurzelordner, in dem gesucht wird. Pfad darf nur dieser Ordner selbst oder ein Unterordner davon sein.">ⓘ</span>
+            </span>
+            <select name="root_path" id="root-folder-select" @change="selectRootFolder($event.target)">
+              {% for rf in root_folders %}
+              <option value="{{ rf.path }}"
+                      {% if (prefill_root_path and rf.path == prefill_root_path) or (not prefill_root_path and loop.first) %}selected{% endif %}>{{ rf.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="field-path">
+            <span class="label-text">Pfad
+              <span class="info-icon" tabindex="0" title="Ordner mit Fotos/Videos (rekursiv bis Tiefe), oder direkt eine einzelne Datei.">ⓘ</span>
+            </span>
+            <div class="path-input-row">
+              <input type="text" name="path" id="f-path" required list="path-suggestions"
+                     placeholder="{{ root_folders[0].path if root_folders else '/mnt/NAS/...' }}"
+                     value="{{ prefill_path or (root_folders[0].path if root_folders else (media_root or '')) }}"
+                     hx-get="/ctxfill/subfolders" hx-trigger="input changed delay:300ms, focus"
+                     hx-target="#path-suggestions" hx-swap="innerHTML"
+                     hx-vals="js:{root_path: document.getElementById('root-folder-select').value}"
+                     @input="onPathInput($event.target)">
+              <button type="button" class="btn-icon" @click="goUpOneLevel()"
+                      title="Eine Ordnerebene nach oben (nie über den Basis-Ordner hinaus)">⬆️</button>
+            </div>
+            <datalist id="path-suggestions"></datalist>
+          </label>
+
+          <label>
+            <span class="label-text">Tiefe
+              <span class="info-icon" tabindex="0" title="Wie viele Ordnerebenen unter Pfad durchsucht werden. 0 = nur der angegebene Ordner selbst, 1-7 = so viele Ebenen darunter.">ⓘ</span>
+            </span>
+            <input type="number" name="depth" id="f-depth" min="0" max="7" value="3" style="width: 5em"
+                   @change="_setLastDepth($event.target.value)">
+          </label>
+
+        </div>
+      </div>
+
+      {% if not service_enabled %}
+      <p class="error">⚠ GEO_SERVICE_URL ist nicht gesetzt – dieses Modul holt Höhe, Wetter und Licht nur über den geo-service.</p>
+      {% else %}
+      <p class="hint">Sucht Fotos/Videos, deren <code>.xmp</code>-Sidecar Angaben vermisst, die neuere Versionen schreiben: <strong>Höhe &amp; Zeitzone</strong>,
+      <strong>Wetter</strong>, <strong>Licht &amp; Mond</strong>, <strong>Datum &amp; Reise</strong> (<code>XMP-mon:Ctx*</code>), <strong>Ort &amp; Gewässer</strong> (Land/Meer, nächste Bucht/Insel/Meerenge, Stichwörter, <code>Ort:</code>-Zeile der .nfo), die <strong>IPTC</strong>-Felder
+      (Credit/Source/Datum) und bei Videos die <strong>Kontext-Zeilen der .nfo</strong>. Der Scan liest nur die Sidecars (nicht die Mediendateien) und braucht die
+      gespeicherte Position; nachgefüllt wird <em>nur Fehlendes</em> aus dem geo-service (<code>{{ service_url }}</code>).</p>
+      {% endif %}
+
+      <div class="actions-row">
+        <label class="opt" title="Auch Dateien ohne Lücken in die Liste aufnehmen – dann mit „vorhandene Kontext-Werte neu schreiben“ Ort, Gewässer und Sehenswürdigkeiten neu auflösen (z. B. nach einem Update des geo-service)"><input type="checkbox" name="refresh" value="1"> auch vollständige Dateien anbieten (Auffrischen)</label>
+        <button type="submit" class="btn-primary">Nach fehlenden Infos suchen</button>
+        <span id="browse-spinner" class="htmx-indicator spinner">sucht…</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" id="file-list">
+    <p class="muted">Pfad wählen und „Nach fehlenden Infos suchen“ klicken.</p>
+  </section>
+
+  <section class="panel" id="results-panel"></section>
+</main>
+
+<script>
+function ctxFillApp() {
+  return {
+    _lastPathKey(name) { return 'metadata-suite:lastpath:' + name; },
+    _lastPathFor(name) {
+      try { return localStorage.getItem(this._lastPathKey(name)); } catch (e) { return null; }
+    },
+    _setLastPathFor(name, value) {
+      try { localStorage.setItem(this._lastPathKey(name), value); } catch (e) {}
+    },
+    _clearLastPathFor(name) {
+      try { localStorage.removeItem(this._lastPathKey(name)); } catch (e) {}
+    },
+    _lastRootKey() { return 'metadata-suite:lastroot'; },
+    _lastRoot() {
+      try { return localStorage.getItem(this._lastRootKey()); } catch (e) { return null; }
+    },
+    _setLastRoot(name) {
+      try { localStorage.setItem(this._lastRootKey(), name); } catch (e) {}
+    },
+    _setLastDepth(value) {
+      try { sessionStorage.setItem('metadata-suite:lastdepth', value); } catch (e) {}
+    },
+    initLastDepth() {
+      try {
+        const saved = sessionStorage.getItem('metadata-suite:lastdepth');
+        if (saved) document.getElementById('f-depth').value = saved;
+      } catch (e) {}
+    },
+    selectRootFolder(selectEl, persist = true) {
+      const opt = selectEl.selectedOptions[0];
+      if (!opt) return;
+      const saved = this._lastPathFor(opt.text);
+      document.getElementById('f-path').value = saved || opt.value;
+      document.getElementById('path-suggestions').innerHTML = '';
+      if (persist) this._setLastRoot(opt.text);
+    },
+    onPathInput(inputEl) {
+      const sel = document.getElementById('root-folder-select');
+      const opt = sel.selectedOptions[0];
+      if (!opt) return;
+      const val = inputEl.value.trim();
+      if (val === '') {
+        inputEl.value = opt.value;
+        this._clearLastPathFor(opt.text);
+      } else {
+        this._setLastPathFor(opt.text, val);
+      }
+      this._setLastRoot(opt.text);
+    },
+    goUpOneLevel() {
+      const input = document.getElementById('f-path');
+      const sel = document.getElementById('root-folder-select');
+      const opt = sel.selectedOptions[0];
+      const rootPath = (opt ? opt.value : '').replace(/\/+$/, '');
+      const val = input.value.trim().replace(/\/+$/, '');
+      if (!val || val === rootPath) return;
+      const idx = val.lastIndexOf('/');
+      let parent = idx > 0 ? val.slice(0, idx) : '/';
+      if (!(parent === rootPath || parent.startsWith(rootPath + '/'))) {
+        parent = rootPath;
+      }
+      input.value = parent;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+    initLastPath() {
+      const sel = document.getElementById('root-folder-select');
+      if (!sel) return;
+      {% if prefill_path %}
+      // Arrived via "Weiter zu Kontext nachfüllen" from GPS Sidecar: use that folder and load the list at once
+      // (wait for htmx:load -- the form is not wired up by htmx before that, see the GPS Sidecar page).
+      const opt = sel.selectedOptions[0];
+      if (opt) this._setLastRoot(opt.text);
+      document.body.addEventListener('htmx:load', function () {
+        document.getElementById('browse-form').requestSubmit();
+      }, { once: true });
+      return;
+      {% endif %}
+      const lastRoot = this._lastRoot();
+      if (lastRoot) {
+        const match = Array.from(sel.options).find(o => o.text === lastRoot);
+        if (match) match.selected = true;
+      }
+      this.selectRootFolder(sel, false);
+    },
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+{# Out-of-band swap: updates the "Umbenannte einblenden" button slot next to "Vorschau
+   laden" in index.html, wherever this fragment itself gets swapped into #file-list.
+   Only shown when the scan actually skipped already-correctly-named files -- once
+   include_already_named=true has been sent, scan_folder() no longer skips anything,
+   so already_named_count is 0 again and the button naturally disappears. #}
+<span id="already-named-slot" hx-swap-oob="true">
+  {% if already_named_count and already_named_count > 0 %}
+  <button type="button" class="btn-ghost" hx-post="/timestamp/browse/start" hx-target="#file-list"
+          hx-include="closest form" hx-indicator="#browse-spinner"
+          hx-vals='{"include_already_named": "true"}'>
+    Umbenannte einblenden ({{ already_named_count }})
+  </button>
+  {% endif %}
+</span>
+
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }} „Vorschau laden" erneut klicken, um von vorn zu beginnen.</p>
+{% else %}
+<form id="execute-form" hx-post="/timestamp/execute/start" hx-target="#results-panel" hx-indicator="#exec-spinner" hx-on::before-request="var b=document.getElementById('exec-btn'); if(b) b.disabled=true;">
+  <input type="hidden" name="all_resolutions" value='{{ all_resolutions_json }}'>
+  {# Carried through to /execute purely so _results.html can offer a "Weiter zu GPS
+     Sidecar" handoff button prefilled with the folder that was just processed. #}
+  <input type="hidden" name="handoff_path" value="{{ form_state.path }}">
+  <input type="hidden" name="handoff_root_path" value="{{ form_state.root_path }}">
+  <input type="hidden" name="default_tz" value="{{ form_state.default_tz }}">
+  {% if form_state.time_shift %}
+  <p class="hint warn">⏱ Zeitkorrektur <strong>{{ form_state.time_shift }}</strong> aktiv: Die Zeiten unten sind bereits um diesen Betrag verschoben (außer GPS-Zeitstempel). Nach dem Schreiben das Feld leeren, sonst wird beim nächsten Scan erneut verschoben.</p>
+  {% endif %}
+
+  {% if suggested_tz %}
+  <p class="hint tz-suggestion">
+    💡 Häufigste sicher erkannte Zeitzone in diesem Ordner: <strong>{{ suggested_tz.zone }}</strong>
+    ({{ suggested_tz.count }} von {{ suggested_tz.confident_total }} sicher erkannten Datei(en)) —
+    aktuelle Fallback-Zone ist „{{ form_state.default_tz }}".
+    <button type="button" class="btn-ghost" onclick="
+      document.getElementById('f-default_tz').value = '{{ suggested_tz.zone }}';
+      document.getElementById('browse-form').requestSubmit();
+    ">Übernehmen &amp; neu laden</button>
+  </p>
+  {% endif %}
+
+  {% set step_include = "#browse-form, [name=do_rename], [name=do_xmpdate], [name=do_exifwrite], [name=do_rotate], [name=rotate_backup], [name=opts_set]" %}
+  {% include "_stepbar.html" %}
+
+  <div class="list-toolbar">
+    <span>{{ rows | selectattr('row_type', 'equalto', 'primary') | list | length }} Datei(en) gefunden</span>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=true)">Alle auswählen</button>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=false)">Keine</button>
+    {# Selection buttons: "Nur …" replaces the selection with the matching files, "+" adds them
+       to the current selection (so e.g. "to be renamed" AND "needs .xmp" can be combined). #}
+    {% set n_ren = rows | selectattr('row_type','equalto','primary') | selectattr('will_rename') | list | length %}
+    {% set n_xmp = rows | selectattr('diag') | selectattr('diag.needs_fix') | list | length %}
+    {% set n_bw = rows | selectattr('diag') | selectattr('diag.needs_backwrite') | list | length %}
+    <span class="sel-group">
+      <button type="button" class="btn-ghost" onclick="selectBy('willRename', false)" title="Auswahl ersetzen: nur Dateien, deren neuer Name vom aktuellen abweicht">Nur umbenennen ({{ n_ren }})</button>
+      <button type="button" class="btn-ghost" onclick="selectBy('willRename', true)" title="Zur Auswahl hinzufügen">+</button>
+    </span>
+    <span class="sel-group">
+      <button type="button" class="btn-ghost" onclick="selectBy('needsFix', false)" title="Auswahl ersetzen: nur Dateien mit falschem/fehlendem Datum im XMP (Immich-Sortierung); bei Bildern ohne .xmp: Datum in der Datei">Nur .xmp-Datum falsch/fehlt ({{ n_xmp }})</button>
+      <button type="button" class="btn-ghost" onclick="selectBy('needsFix', true)" title="Zur Auswahl hinzufügen">+</button>
+    </span>
+    <span class="sel-group">
+      <button type="button" class="btn-ghost" onclick="selectBy('needsBackwrite', false)" title="Auswahl ersetzen: nur Bilder, bei denen die Lokalzeit in der Datei selbst fehlt (EXIF-Backwrite)">Nur Bilder ohne Lokalzeit in der Datei ({{ n_bw }})</button>
+      <button type="button" class="btn-ghost" onclick="selectBy('needsBackwrite', true)" title="Zur Auswahl hinzufügen">+</button>
+    </span>
+    <script>
+      function selectBy(key, add) {
+        document.querySelectorAll('.row-checkbox').forEach(c => {
+          const hit = c.dataset[key] === 'true';
+          if (add) { if (hit) c.checked = true; } else { c.checked = hit; }
+        });
+      }
+    </script>
+    <input type="hidden" name="opts_set" value="true">
+    <label class="checkbox-field inline">
+      <input type="checkbox" name="do_rename" value="true" {% if form_state.do_rename %}checked{% endif %}>
+      Umbenennen
+      <span class="info-icon" tabindex="0" title="Wenn aktiviert, werden beim Ausführen die ausgewählten Dateien tatsächlich umbenannt (inkl. zugehöriger Begleit-Audio-Dateien .AAC/.WAV/.MP3 im Gleichschritt). Deaktiviert = es wird nichts umbenannt.">ⓘ</span>
+    </label>
+    <label class="checkbox-field inline">
+      <input type="checkbox" name="do_xmpdate" value="true" {% if form_state.do_xmpdate %}checked{% endif %}>
+      .xmp-Sidecar-Datum setzen
+      <span class="info-icon" tabindex="0" title="Setzt beim Ausführen in einer bereits vorhandenen .xmp das Aufnahmedatum (xmp:CreateDate, DateTimeOriginal) auf die berechnete Lokalzeit mit UTC-Offset -- unabhängig vom EXIF-Backwrite. Genau das liest Immich für die Sortierung. Legt keine neue .xmp an (das macht GPS Sidecar).">ⓘ</span>
+    </label>
+    <label class="checkbox-field inline">
+      <input type="checkbox" name="do_exifwrite" value="true" {% if form_state.do_exifwrite %}checked{% endif %}>
+      EXIF zurückschreiben (nur Bilder)
+      <span class="info-icon" tabindex="0" title="Wenn aktiviert, werden die aufgelösten Datums-/Zeitzonenwerte per exiftool in BILDER zurückgeschrieben (alldates, TimeZoneOffset, OffsetTime*, GPS-Zeitstempel). Videos werden nie umgeschrieben (Datum nur über das .xmp-Sidecar), .nfo-Dateien auch nicht.">ⓘ</span>
+    </label>
+    <label class="checkbox-field inline">
+      <input type="checkbox" name="do_rotate" value="true" {% if form_state.do_rotate %}checked{% endif %}>
+      Bilder verlustfrei aufrecht drehen (JPEG)
+      <span class="info-icon" tabindex="0" title="Beim Ausführen werden ausgewählte JPEGs, die nur durch das EXIF-Orientation-Tag aufrecht erscheinen, verlustfrei gedreht (exiftran, ohne Neukomprimierung): Das Orientation-Tag wird zurückgesetzt, EXIF-Daten und Dateizeit bleiben, ein .xmp-Sidecar wird mitgezogen. Nur Ränder, die nicht auf die JPEG-Blockgröße passen, werden um höchstens 15 Pixel beschnitten. HEIC/PNG/WebP/RAW werden nie gedreht. Ein Backup „datei.jpg~“ legt nur der Schalter daneben an.">ⓘ</span>
+    </label>
+    <label class="checkbox-field inline">
+      <input type="checkbox" name="rotate_backup" value="true" {% if form_state.rotate_backup %}checked{% endif %}>
+      Backup vor dem Drehen (<code>datei.jpg~</code>)
+      <span class="info-icon" tabindex="0" title="Legt vor dem Drehen eine Kopie „datei.jpg~“ neben dem Original an. Standard: aus.">ⓘ</span>
+    </label>
+    <label class="checkbox-field inline">
+      <input type="checkbox" name="force_zone" value="true" {% if form_state.force_zone %}checked{% endif %}>
+      Fallback-Zone „{{ form_state.default_tz }}“ erzwingen
+      <span class="info-icon" tabindex="0" title="Gilt beim Schreiben für alle ausgewählten Dateien: Die Uhrzeit (und damit der Dateiname) bleibt, nur der UTC-Offset wird auf den der Fallback-Zone gesetzt – z.B. falsch geotaggte Fotos mit +04:00 (Asia/Dubai) bekommen +02:00 (Europe/Vienna). Die Vorschau zeigt weiterhin den ursprünglich ermittelten Offset.">ⓘ</span>
+    </label>
+  </div>
+
+  {% if camera_model %}
+  <p class="hint">📷 Nur Dateien gefiltert, deren Kamera (Make/Model oder Gerätename) „{{ camera_model }}" enthält
+    {%- if camera_filtered_count %} ({{ camera_filtered_count }} andere Datei(en) ausgeblendet){% endif %}.
+    „Umbenannte einblenden" ist dafür automatisch mit aktiviert, da genau dieser Filter typischerweise
+    Dateien treffen soll, die zwar schon im richtigen Namensformat sind, deren Zeitstempel aber falsch war.</p>
+  {% endif %}
+
+  {% if only_needs_rename or only_needs_fix or only_needs_backwrite %}
+  <p class="hint">🔎 Geladen nur Dateien, die
+    {% set parts = [] %}
+    {%- if only_needs_rename %}{% set _ = parts.append("umbenannt werden müssen") %}{% endif %}
+    {%- if only_needs_fix %}{% set _ = parts.append("ein falsches/fehlendes .xmp-Datum haben") %}{% endif %}
+    {%- if only_needs_backwrite %}{% set _ = parts.append("(Bilder) keine Lokalzeit in der Datei haben") %}{% endif %}
+    {{ parts | join(" ODER ") }}
+    {%- if filter_dropped %} ({{ filter_dropped }} Datei(en) in Ordnung, nicht geladen){% endif %}.</p>
+  {% endif %}
+
+  {% if rows|length == 0 %}
+    {% if already_named_count and already_named_count > 0 and not camera_model and not (only_needs_rename or only_needs_fix or only_needs_backwrite) %}
+    <p class="muted">Alle {{ already_named_count }} gefundenen Datei(en) sind bereits korrekt benannt.
+      Mit „Umbenannte einblenden" oben können sie trotzdem angezeigt werden.</p>
+    {% else %}
+    <p class="muted">Keine passenden Dateien gefunden.</p>
+    {% endif %}
+  {% endif %}
+
+  <div class="rows">
+    {% for r in rows %}
+    {% if r.row_type == "companion" %}
+    {# Companion files (.xmp sidecar, audio, thumbs) are never listed on their own: they are
+       renamed/touched together with their media file, announced on that file's row below. #}
+    {% else %}
+    <label class="row {% if r.warn %}row-warn{% endif %}">
+      <input type="checkbox" class="row-checkbox" name="selected" value="{{ r.path }}" checked data-needs-fix="{{ 'true' if (r.diag and r.diag.needs_fix) else 'false' }}" data-needs-backwrite="{{ 'true' if (r.diag and r.diag.needs_backwrite) else 'false' }}" data-will-rename="{{ 'true' if r.will_rename else 'false' }}">
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+          <span class="meta-label">(Ursprünglicher Dateiname)</span>
+        </div>
+        {% if r.will_rename %}
+        <div class="meta-row">
+          <span class="arrow">→ {{ r.target_name }}</span>
+          <span class="meta-label">(Neuer Dateiname)</span>
+        </div>
+        {% else %}
+        <div class="arrow unchanged">(Name bleibt gleich)</div>
+        {% endif %}
+        <div class="source-badge">{{ r.source_display }}</div>
+        {% if r.companions %}
+        <div class="meta-row companion-note"><span class="meta-label" title="Werden beim Ausführen automatisch mit umbenannt / datiert">📎 Begleitdateien werden mitgeändert:
+          {% for c in r.companions %}{{ c.name }} → {{ c.target }}{% if not loop.last %}; {% endif %}{% endfor %}</span></div>
+        {% endif %}
+        {% if r.camera_make or r.camera_model %}
+        <div class="meta-row"><span class="meta-label">📷 {{ r.camera_label }}
+          {%- if not r.camera_label_is_raw %} <span title="Quelle der Übersetzung: {{ r.camera_label_source }}">({{ r.camera_raw }} · {{ r.camera_label_source }})</span>{% endif %}</span></div>
+        {% endif %}
+        {% if r.diag %}
+        <div class="meta-row diag-row" data-needs-fix="{{ 'true' if r.diag.needs_fix else 'false' }}">
+          {% if r.diag.needs_fix %}
+            {% if r.diag.sidecar_state == 'nofile' and r.diag.is_video %}
+            <span class="warn">⚠ keine .xmp – Immich nutzt den Rohwert aus der Video-Datei (evtl. falsche Zeitzone) → „GPS Sidecar“ anlegen lassen</span>
+            {% elif r.diag.sidecar_state == 'nooffset' %}
+            <span class="warn">⚠ .xmp-Datum ohne UTC-Offset – Immich liest es als UTC → „.xmp-Datum setzen“</span>
+            {% elif r.diag.sidecar_state in ('mismatch', 'missing') %}
+            <span class="warn">⚠ .xmp-Datum {{ 'fehlt' if r.diag.sidecar_state == 'missing' else 'weicht vom Ziel ab' }} → „.xmp-Datum setzen“</span>
+            {% else %}
+            <span class="warn">⚠ Lokalzeit fehlt in der Bild-Datei und keine .xmp vorhanden – EXIF-Backwrite oder „.xmp-Datum setzen“ nötig</span>
+            {% endif %}
+          {% else %}
+          <span class="meta-label">✅ {% if r.diag.sidecar_state == 'ok' %}.xmp stimmt mit dem Ziel überein – Immich sortiert korrekt{% else %}Datei stimmt mit dem Ziel überein{% endif %}</span>
+          {% endif %}
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">{{ '🎞 Video-Datei' if r.diag.is_video else '🖼 Bild-Datei' }}:
+            {{ r.diag.file_value or 'kein Datum' }}
+            {% if r.diag.is_video and r.diag.sidecar_state == 'ok' %}{{ '✓' if r.diag.file_state == 'ok' else '(nur Info – Immich nimmt die .xmp)' }}
+            {% elif r.diag.is_video %}{{ '✓' if r.diag.file_state == 'ok' else '(nur Info – Videos werden nicht umgeschrieben)' }}
+            {% else %}{{ '✓' if r.diag.file_state == 'ok' else '⚠' }}
+            {% if r.diag.offset_missing %}· kein UTC-Offset gespeichert ⚠{% endif %}{% endif %}</span>
+        </div>
+        {% if r.diag.is_video and r.diag.embedded_xmp_state %}
+        <div class="meta-row"><span class="meta-label">↳ eingebettetes XMP: {{ r.diag.embedded_xmp_value or 'fehlt' }} {{ '✓' if r.diag.embedded_xmp_state == 'ok' else '⚠' }}</span></div>
+        {% endif %}
+        <div class="meta-row">
+          <span class="meta-label">📄 .xmp-Sidecar:
+            {% if r.diag.sidecar_state == 'nofile' %}keine .xmp vorhanden
+            {% else %}{{ r.diag.sidecar_value or 'kein Datum' }} {{ '✓' if r.diag.sidecar_state == 'ok' else ('⚠ ohne UTC-Offset' if r.diag.sidecar_state == 'nooffset' else '⚠') }}{% endif %}</span>
+        </div>
+        {% endif %}
+        <div class="meta-row">
+          <span class="zieldate">{{ r.zieldate }}</span>
+          <span class="meta-label">(Zeitstempel + UTC-Offset für Umbenennung/EXIF-Schreiben)</span>
+        </div>
+        {% if r.warn %}<div class="warn">⚠ {{ r.warn }}</div>{% endif %}
+        {% if r.rel_dir %}<div class="subdir-badge">📁 {{ r.rel_dir }}</div>{% endif %}
+      </div>
+    </label>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  {% if rows|length > 0 %}
+  <div class="actions-row sticky-bottom">
+    <button type="submit" class="btn-primary btn-execute" id="exec-btn">Ausführen</button>
+    <span id="exec-spinner" class="htmx-indicator spinner">wird angewendet…</span>
+  </div>
+  {% endif %}
+</form>
+{% endif %}

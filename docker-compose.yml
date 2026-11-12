@@ -1,0 +1,441 @@
+# Metadata Suite — add this as a service in your existing homelab docker-compose
+# stack (the one already running Traccar/Dawarich/Photon/etc.), or run it standalone
+# with `docker compose up -d` from this folder. This is meant to be ONE container
+# hosting multiple tool modules over time; the "timestamp" module is the first one,
+# future tools get added as more routes inside the same app rather than more
+# services here.
+#
+# Environment values below come from a .env file in this same folder (docker
+# compose reads it automatically for ${VAR} substitution). Copy .env.example to
+# .env and adjust it there — this docker-compose.yml itself can then be updated
+# (e.g. by re-extracting a newer version of this project) without ever touching
+# or overwriting your actual settings in .env.
+
+services:
+  metadata-suite:
+    build:
+      context: .
+      args:
+        EXIFTOOL_VERSION: ${EXIFTOOL_VERSION:-13.59}   # build fails if the installed exiftool differs
+        FFMPEG_VERSION: ${FFMPEG_VERSION:-9.0.2}       # ffmpeg + ffprobe, built from source; build fails on mismatch
+        MEDIAINFO_VERSION: ${MEDIAINFO_VERSION:-26.10} # mediainfo CLI, built from source; build fails on mismatch
+        MEDIA_IMAGE: metadata-suite-media:ffmpeg${FFMPEG_VERSION:-9.0.2}-mediainfo${MEDIAINFO_VERSION:-26.10}   # kept ffmpeg/mediainfo image (see media-tools)
+        APP_VERSION: ${APP_VERSION:-}
+        GIT_COMMIT: ${GIT_COMMIT:-}      # e.g. GIT_COMMIT=$(git rev-parse --short HEAD) docker compose build
+        GIT_BRANCH: ${GIT_BRANCH:-}
+        GIT_MESSAGE: ${GIT_MESSAGE:-}    # commit subject, shown on the Info page
+    image: metadata-suite
+    container_name: metadata-suite
+    restart: always
+    user: "${PUID:-1026}:${PGID:-100}"      # set PUID/PGID in .env -- must be able to write the NAS folders and ./config
+    depends_on:
+      geo-service:
+        condition: service_healthy
+        required: false      # the suite also works (with its own geocoding chain) while geo-service is down
+    ports:
+      - "8420:8000"          # pick any free host port
+    volumes:
+      # Host paths come from .env (left side); container paths stay fixed (MEDIA_ROOT follows the right side).
+      - ${MEDIA_HOST_DIR:-/mnt/NAS}:${MEDIA_ROOT:-/mnt/NAS}    # the NAS share with your photos/videos
+      - ${CONFIG_HOST_DIR:-./config}:/config                   # presets.json, camera_names.json persist here
+    environment:
+      - HOME=/tmp            # the numeric user has no home directory in the image
+      - TZ=${TZ:-}           # container time zone from .env, e.g. Europe/Vienna (empty = UTC)
+      - MEDIA_ROOT=${MEDIA_ROOT:-/mnt/NAS}
+      - TIMESTAMP_PRESETS_FILE=${TIMESTAMP_PRESETS_FILE:-/config/presets.json}
+      - CAMERA_NAMES_FILE=${CAMERA_NAMES_FILE:-/config/camera_names.json}
+      - ROOT_FOLDERS=${ROOT_FOLDERS:-}
+      # Stepped loading: files per step in every list module (0 = everything at once).
+      - BATCH_SIZE=${BATCH_SIZE:-200}
+      - BATCH_SIZE_TIMESTAMP=${BATCH_SIZE_TIMESTAMP:-}
+      - BATCH_SIZE_GPS=${BATCH_SIZE_GPS:-}
+      - BATCH_SIZE_AI=${BATCH_SIZE_AI:-}
+      - BATCH_SIZE_NFO=${BATCH_SIZE_NFO:-}
+      - BATCH_SIZE_MTIME=${BATCH_SIZE_MTIME:-}
+      - BATCH_SIZE_SHORTVIDEOS=${BATCH_SIZE_SHORTVIDEOS:-}
+      - BATCH_SIZE_GPSFILL=${BATCH_SIZE_GPSFILL:-}
+      - BATCH_SIZE_CTXFILL=${BATCH_SIZE_CTXFILL:-}
+      - YEAR_RUN_STATE_DAYS=${YEAR_RUN_STATE_DAYS:-}
+      - FILE_INDEX=${FILE_INDEX:-on}
+      - FILE_INDEX_DAYS=${FILE_INDEX_DAYS:-365}
+      - FILE_INDEX_DB=${FILE_INDEX_DB:-}
+      # exiftool runs as a small pool of long-lived processes (-stay_open); 0 = one process per call.
+      - EXIFTOOL_POOL_SIZE=${EXIFTOOL_POOL_SIZE:-6}
+      - EXIFTOOL_POOL_IDLE_SECS=${EXIFTOOL_POOL_IDLE_SECS:-300}
+      # GPS Sidecar module: all of these point at the maintainer's own already-running
+      # self-hosted services (Traccar, Dawarich, Photon/Nominatim/Pelias, maritime
+      # backup) -- this container never runs any of them itself, so there is no new
+      # service to add here, only the URLs/keys. See .env.example for what each does.
+      - TRACCAR_URL=${TRACCAR_URL:-}
+      - TRACCAR_TOKEN=${TRACCAR_TOKEN:-}
+      - TRACCAR_DEVICES=${TRACCAR_DEVICES:-}
+      - TRACCAR_DEVICES_ADDITIONAL=${TRACCAR_DEVICES_ADDITIONAL:-}
+      - DAWARICH_SERVER=${DAWARICH_SERVER:-}
+      - DAWARICH_API_KEY=${DAWARICH_API_KEY:-}
+      - DAWARICH_IMPORT_API_KEY=${DAWARICH_IMPORT_API_KEY:-}
+      - PHOTON_SERVER=${PHOTON_SERVER:-}
+      - NOMINATIM_SERVER=${NOMINATIM_SERVER:-}
+      - PELIAS_SERVER=${PELIAS_SERVER:-}
+      - MARITIME_SERVER=${MARITIME_SERVER:-}
+      - GEO_LANG=${GEO_LANG:-de}
+      - GPS_UTC_TRUST=${GPS_UTC_TRUST:-auto}
+      - GEO_MAX_GAP_SECS=${GEO_MAX_GAP_SECS:-600}
+      - GEO_MAX_GAP_SECS_TIER2=${GEO_MAX_GAP_SECS_TIER2:-21600}
+      # Optional geo-service container (see geo-service/): shared reverse-geocoding cache + breaker,
+      # and extra context for AI descriptions. Empty = suite uses its own local chain as before.
+      # Default points at the geo-service defined below in THIS compose file (same network, service DNS name).
+      # Set GEO_SERVICE_URL= (empty) in .env to switch it off; the suite then uses its own chain.
+      - GEO_SERVICE_URL=${GEO_SERVICE_URL-http://geo-service:8000}
+      - GEO_SERVICE_TOKEN=${GEO_SERVICE_TOKEN:-}
+      - GEO_SERVICE_TIMEOUT=${GEO_SERVICE_TIMEOUT:-8}
+      - GEO_CONTEXT_TIMEOUT=${GEO_CONTEXT_TIMEOUT:-40}
+      - AI_CONTEXT=${AI_CONTEXT:-true}
+      - AI_CONTEXT_MAX=${AI_CONTEXT_MAX:-2}
+      - AI_CONTEXT_ELEVATION=${AI_CONTEXT_ELEVATION:-false}
+      - AI_CONTEXT_EXTRAS=${AI_CONTEXT_EXTRAS:-daylight,moon,holiday,trip,poi}
+      - NFO_PLOT_CONTEXT=${NFO_PLOT_CONTEXT:-full}
+      - XMP_CONTEXT=${XMP_CONTEXT:-true}
+      - XMP_PLACE_EXTRAS=${XMP_PLACE_EXTRAS:-true}
+      - GPS_TRACK_BRIDGE_DAYS=${GPS_TRACK_BRIDGE_DAYS:-3}
+      - GPS_TRACK_MAX_SPAN_DAYS=${GPS_TRACK_MAX_SPAN_DAYS:-31}
+      - XMP_EE_MAX_MB=${XMP_EE_MAX_MB:-100}
+      - XMP_TIMEOUT_MAX=${XMP_TIMEOUT_MAX:-1800}
+      - ANDROID_DEVICES_FILE=${ANDROID_DEVICES_FILE:-/config/android_devices.json}   # Google-Geräteliste, liegt im Config-Volume (nicht im Image)
+      - GEO_SERVICE_PUBLIC_URL=${GEO_SERVICE_PUBLIC_URL:-}          # Endpunkt-Seite: Adresse des Servers, wie dein Browser ihn erreicht (nur Host, z. B. http://192.168.1.33); leer = Host der Suite-Seite
+      - GEO_PUBLIC_PORT=${GEO_PUBLIC_PORT:-8430}
+      - GEO_PUBLIC_PORT_NOMINATIM=${GEO_PUBLIC_PORT_NOMINATIM:-8431}
+      - GEO_PUBLIC_PORT_PHOTON=${GEO_PUBLIC_PORT_PHOTON:-8432}
+      - IPTC_FILL=${IPTC_FILL:-true}
+      - IPTC_CREDIT=${IPTC_CREDIT-}      # empty value = write no credit
+      - IMAGE_OFFSET_FROM_ZONE=${IMAGE_OFFSET_FROM_ZONE:-true}
+      - AI_SENTENCES=${AI_SENTENCES:-2-3}
+      - AI_WORDS_MAX=${AI_WORDS_MAX:-50}
+      - AI_SENTENCES_CONTEXT=${AI_SENTENCES_CONTEXT:-3-4}
+      - AI_WORDS_MAX_CONTEXT=${AI_WORDS_MAX_CONTEXT:-75}
+      # AI Description module: same env var names as ~/.GEOCODING/env_nfo_ai, so an
+      # existing setup's values can be copied in unchanged. This container never runs
+      # Ollama/ffmpeg's model inference itself (ffmpeg only extracts a frame/resizes),
+      # it just calls out to the already-configured OLLAMA_URL / Gemini API.
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - OLLAMA_URL=${OLLAMA_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
+      - GOOGLE_AI_MODEL=${GOOGLE_AI_MODEL:-}
+      # true/1/yes/on: Timestamp & Rename, GPS Sidecar and AI Description each
+      # automatically run their own "fix the mtime" step right after "Ausführen",
+      # instead of needing the "🕒 Datei-Zeitstempel wiederherstellen" button click.
+      - RESTORE_TIMESTAMP=${RESTORE_TIMESTAMP:-false}
+      # Datei-Zeitstempel interprets filenames/mtimes as wall-clock time in this zone,
+      # regardless of the container's own system timezone (UTC by default -- this image
+      # has no TZ/tzdata set). Change only if your files' encoded times aren't Vienna's.
+      - MTIME_TIMEZONE=${MTIME_TIMEZONE:-Europe/Vienna}
+      # Collage module: standard settings for the trip-based collage generator (every
+      # one is still overrideable per-run on the module page itself). See .env.example.
+      - COLLAGE_LAYOUT=${COLLAGE_LAYOUT:-random}
+      - COLLAGE_WIDTH=${COLLAGE_WIDTH:-4096}
+      - COLLAGE_HEIGHT=${COLLAGE_HEIGHT:-2304}
+      - COLLAGE_COUNT=${COLLAGE_COUNT:-139}
+      - COLLAGE_BORDER=${COLLAGE_BORDER:-6}
+      - COLLAGE_ROTATION=${COLLAGE_ROTATION:-25}
+      - COLLAGE_CELL=${COLLAGE_CELL:-}
+      - COLLAGE_JITTER=${COLLAGE_JITTER:-0.55}
+      - COLLAGE_SEED=${COLLAGE_SEED:-}
+      - COLLAGE_SPACING=${COLLAGE_SPACING:-0}
+      - COLLAGE_TILE_SIZE=${COLLAGE_TILE_SIZE:-}
+      - COLLAGE_SIZE_VARIATION=${COLLAGE_SIZE_VARIATION:-0.35}
+      - COLLAGE_SYNC_FOLDER_JPG=${COLLAGE_SYNC_FOLDER_JPG:-false}
+      - PHOTO_ROOT=${PHOTO_ROOT:-/mnt/NAS/photo}
+      - VIDEO_ROOT=${VIDEO_ROOT:-/mnt/NAS/video/Home-Video}
+      # NFO Maker module: Kodi .nfo + poster/fanart/thumb/folder.jpg generator for
+      # videos. Reads GPS/location/AI-description from an already-existing .xmp
+      # sidecar only (run GPS Sidecar / AI-Beschreibung first) -- never fetches or
+      # generates either itself. See .env.example for the full list.
+      - NFO_DIRECTOR=${NFO_DIRECTOR:-}
+      - NFO_STUDIO=${NFO_STUDIO:-}
+      - NFO_SET=${NFO_SET:-Home Movie}
+      - NFO_GENRE=${NFO_GENRE:-Home-Video}
+      - NFO_TAG=${NFO_TAG:-Home-Video}
+      - NFO_MPAA=${NFO_MPAA:-Rated R}
+      - NFO_CERTIFICATION=${NFO_CERTIFICATION:-Germany:6}
+      - NFO_USERRATING=${NFO_USERRATING:-10}
+      - NFO_CRITICRATING=${NFO_CRITICRATING:-100}
+      - NFO_GEO_COLOR=${NFO_GEO_COLOR:-cyan}
+      - NFO_CAMERA_THUMB=${NFO_CAMERA_THUMB:-/storage/videos/HomeVideo/.actors/camera.png}
+      - NFO_ACTORS=${NFO_ACTORS:-}
+      - NFO_AI_DESCRIPTION=${NFO_AI_DESCRIPTION:-true}
+      - NFO_SKIP_LOCATION=${NFO_SKIP_LOCATION:-false}
+      - NFO_OLDER=${NFO_OLDER:-}
+      - NFO_SHORT_VIDEO_SECS=${NFO_SHORT_VIDEO_SECS:-10}
+    # If exiftool calls ever need more than the default subprocess timeout for huge
+    # files on a slow NAS mount, that's handled per-request from the UI, not here.
+
+  # Geo-service: reverse geocoding (Photon -> Nominatim -> Pelias, shared cache + circuit breaker),
+  # GPS-track lookup per UTC day and caption context. Started together with the suite from this one
+  # file; it reads the same .env (PHOTON_/NOMINATIM_/PELIAS_/TRACCAR_/DAWARICH_/GEO_*).
+  geo-service:
+    build:
+      context: ./geo-service
+    image: geo-service
+    container_name: geo-service
+    restart: always
+    user: "${PUID:-1026}:${PGID:-100}"      # set PUID/PGID in .env -- must be able to write ./geo-data
+    ports:
+      - "8430:8000"                        # optional: only needed to call the service from outside
+      - "8431:8001"                        # Nominatim API (Traccar: geocoder nominatim; Dawarich: NOMINATIM_API_HOST)
+      - "8432:8002"                        # Photon API (Dawarich: PHOTON_API_HOST)
+    volumes:
+      # Host paths come from .env (left side); container paths are fixed.
+      - ${GEO_DATA_HOST_DIR:-./geo-data}:/data                 # geo-cache.sqlite, overrides.json, srtm/ tiles
+      - ${GEONAMES_HOST_DIR:-./geonames}:/geonames:ro            # folder with your GeoNames files (countryInfo.txt is read from here)
+    labels:
+      - autoheal=true
+    environment:
+      - PHOTON_SERVER=${PHOTON_SERVER:-}
+      - NOMINATIM_SERVER=${NOMINATIM_SERVER:-}
+      - PELIAS_SERVER=${PELIAS_SERVER:-}
+      - MARITIME_SERVER=${MARITIME_SERVER:-}
+      - GEO_LANG=${GEO_LANG:-de}
+      - GEO_CHAIN=${GEO_CHAIN:-photon,nominatim,pelias,gazetteer}
+      - GEO_HTTP_TIMEOUT=${GEO_HTTP_TIMEOUT:-5}
+      - GEO_BREAKER_FAILURES=${GEO_BREAKER_FAILURES:-3}
+      - GEO_BREAKER_COOLDOWN=${GEO_BREAKER_COOLDOWN:-60}
+      - GEO_CACHE_PRECISION=${GEO_CACHE_PRECISION:-4}
+      - GEO_CACHE_TTL_DAYS=${GEO_CACHE_TTL_DAYS:-365}
+      - GEO_CACHE_NEG_TTL=${GEO_CACHE_NEG_TTL:-3600}
+      - TRACCAR_URL=${TRACCAR_URL:-}
+      - TRACCAR_TOKEN=${TRACCAR_TOKEN:-}
+      - TRACCAR_DEVICES=${TRACCAR_DEVICES:-}
+      - TRACCAR_DEVICES_ADDITIONAL=${TRACCAR_DEVICES_ADDITIONAL:-}
+      - DAWARICH_SERVER=${DAWARICH_SERVER:-}
+      - DAWARICH_API_KEY=${DAWARICH_API_KEY:-}
+      - DAWARICH_IMPORT_API_KEY=${DAWARICH_IMPORT_API_KEY:-}
+      - GEO_MAX_GAP_SECS=${GEO_MAX_GAP_SECS:-600}
+      - GEO_MAX_GAP_SECS_TIER2=${GEO_MAX_GAP_SECS_TIER2:-21600}
+      - WEATHER_BACKFILL_DELAY=${WEATHER_BACKFILL_DELAY:-0.4}
+      - WEATHER_BACKFILL_MAX=${WEATHER_BACKFILL_MAX:-5000}
+      - WEATHER_PROVIDER=${WEATHER_PROVIDER:-none}
+      - GEO_DEFAULT_TZ=${GEO_DEFAULT_TZ:-Europe/Vienna}
+      - GEO_SERVICE_TOKEN=${GEO_SERVICE_TOKEN:-}
+      # Nominatim-/Photon-compatible ports (container side; 0 = off). Open by default (location lookups only);
+      # GEO_COMPAT_AUTH=true asks for the token as ?token= / ?key= / X-Api-Key
+      - GEO_NOMINATIM_PORT=${GEO_NOMINATIM_PORT:-8001}
+      - GEO_PHOTON_PORT=${GEO_PHOTON_PORT:-8002}
+      - GEO_COMPAT_AUTH=${GEO_COMPAT_AUTH:-false}
+      # GeoNames-compatible endpoints (findNearbyPlaceName, findNearbyPostalCodes, search, get, hierarchy, countryInfo, address) -- replaces the geonames-wrapper container.
+      # The old wrapper variable names (MAX_ROWS_LIMIT, POSTAL_PROBE_*, HTTP_TIMEOUT_SECONDS) still work as fallbacks.
+      - GN_HTTP_TIMEOUT=${GN_HTTP_TIMEOUT:-${HTTP_TIMEOUT_SECONDS:-10}}
+      - GN_MAX_ROWS_LIMIT=${GN_MAX_ROWS_LIMIT:-${MAX_ROWS_LIMIT:-50}}
+      - GN_POSTAL_PROBE_RINGS=${GN_POSTAL_PROBE_RINGS:-${POSTAL_PROBE_RINGS:-2}}
+      - GN_POSTAL_PROBE_POINTS_PER_RING=${GN_POSTAL_PROBE_POINTS_PER_RING:-${POSTAL_PROBE_POINTS_PER_RING:-8}}
+      - GN_POSTAL_PROBE_CONCURRENCY=${GN_POSTAL_PROBE_CONCURRENCY:-${POSTAL_PROBE_CONCURRENCY:-6}}
+      - GN_CHILDREN_MAX_PROBES=${GN_CHILDREN_MAX_PROBES:-400}
+      - GN_SEARCH_ORDER=${GN_SEARCH_ORDER:-${SEARCH_BACKEND_ORDER:-gazetteer,pelias,nominatim,photon}}
+      - GN_COUNTRY_INFO_FILE=${GN_COUNTRY_INFO_FILE:-}
+      - ELEVATION_PROVIDER=${ELEVATION_PROVIDER:-local,open-meteo}
+      - GEO_SRTM_PRELOAD=${GEO_SRTM_PRELOAD:-austria}
+      - GEO_TRACK_TIMEOUT=${GEO_TRACK_TIMEOUT:-60}
+      - WEATHER_ARCHIVE_URL=${WEATHER_ARCHIVE_URL:-https://archive-api.open-meteo.com/v1/archive}
+      - WEATHER_FORECAST_URL=${WEATHER_FORECAST_URL:-https://api.open-meteo.com/v1/forecast}
+      - ELEVATION_URL=${ELEVATION_URL:-https://api.open-meteo.com/v1/elevation}
+      - GEO_SRTM_SOURCE_URL=${GEO_SRTM_SOURCE_URL:-https://elevation-tiles-prod.s3.amazonaws.com/skadi}
+      - GN_ID_DB=${GN_ID_DB:-}
+      - GN_GAZETTEER_DB=${GN_GAZETTEER_DB:-}
+      - GN_GAZETTEER_LANGS=${GN_GAZETTEER_LANGS:-de,en}
+      - GN_GAZETTEER_FTS_CLASSES=${GN_GAZETTEER_FTS_CLASSES:-}
+      - GN_GAZETTEER_REVERSE_KM=${GN_GAZETTEER_REVERSE_KM:-25}
+      - GN_DUMP_DIR=${GN_DUMP_DIR:-}
+      - GEO_OVERRIDES_FILE=${GEO_OVERRIDES_FILE:-}
+      # map in the override editor (raster tiles of your tileserver-GL; the browser must reach the URL)
+      - GEO_TILE_URL=${GEO_TILE_URL:-}
+      - GEO_TILE_ATTRIBUTION=${GEO_TILE_ATTRIBUTION:-}
+      - GEO_TILE_MAXZOOM=${GEO_TILE_MAXZOOM:-19}
+      - GEO_TILE_PROXY=${GEO_TILE_PROXY:-false}
+      - GEO_RADAR_STYLE_URL=${GEO_RADAR_STYLE_URL:-}
+      - GEO_RADAR_API=${GEO_RADAR_API:-https://api.rainviewer.com/public/weather-maps.json}
+      - GEO_RADAR_COLOR=${GEO_RADAR_COLOR:-2}
+      - GEO_RADAR_OPTIONS=${GEO_RADAR_OPTIONS:-1_0}
+      - GEO_RADAR_MAXZOOM=${GEO_RADAR_MAXZOOM:-7}
+      # context extras: home, trips, sights, place names
+      - GEO_HOME_COUNTRY=${GEO_HOME_COUNTRY:-AT}
+      - GEO_HOME_LAT=${GEO_HOME_LAT:-0}
+      - GEO_HOME_LON=${GEO_HOME_LON:-0}
+      - GEO_TRIP_AWAY_KM=${GEO_TRIP_AWAY_KM:-60}
+      - GEO_TRIP_MIN_DAYS=${GEO_TRIP_MIN_DAYS:-2}
+      - GEO_TRIP_MAX_GAP_DAYS=${GEO_TRIP_MAX_GAP_DAYS:-1}
+      - GEO_TRIP_LOOKBACK_DAYS=${GEO_TRIP_LOOKBACK_DAYS:-45}
+      - GEO_PLACE_TRIP_KM=${GEO_PLACE_TRIP_KM:-100}
+      - GEO_POI=${GEO_POI:-true}
+      - GEO_POI_RADIUS_M=${GEO_POI_RADIUS_M:-400}
+      - GEO_POI_MAX=${GEO_POI_MAX:-3}
+      - GEO_POI_SKIP=${GEO_POI_SKIP:-}
+      - GEO_NORMALIZE_NAMES=${GEO_NORMALIZE_NAMES:-true}
+      - GEO_NAME_ALIASES_FILE=${GEO_NAME_ALIASES_FILE:-}
+      - GEO_SLOW_LOG_MS=${GEO_SLOW_LOG_MS:-500}
+      - GEO_SIGHTS_DB=${GEO_SIGHTS_DB:-}
+      - GEO_TOP_SIGHT_M=${GEO_TOP_SIGHT_M:-60}
+      - GEO_TOP_SIGHT_MIN_IMPORTANCE=${GEO_TOP_SIGHT_MIN_IMPORTANCE:-0.30}
+
+  # ffmpeg + ffprobe + mediainfo, compiled ONCE and kept as the image metadata-suite-media:ffmpeg<v>-mediainfo<v> (Dockerfile.media).
+  # The metadata-suite build copies the binaries from it, so a cache prune can never trigger the 6-minute compile again.
+  # build_start.sh builds it automatically when that tag is missing; by hand: docker compose --profile tools build media-tools
+  media-tools:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: Dockerfile.media
+      args:
+        FFMPEG_VERSION: ${FFMPEG_VERSION:-9.0.2}
+        MEDIAINFO_VERSION: ${MEDIAINFO_VERSION:-26.10}
+        FFMPEG_SHA256: ${FFMPEG_SHA256:-}
+        MEDIAINFO_SHA256: ${MEDIAINFO_SHA256:-}
+    image: metadata-suite-media:ffmpeg${FFMPEG_VERSION:-9.0.2}-mediainfo${MEDIAINFO_VERSION:-26.10}
+
+  # Builds wikimedia_importance.tsv.gz yourself (Nominatim's generator + PostgreSQL inside the container): ~150 GB disk, 9-12 h.
+  # The sights containers pick the newest file in the wikimedia folder automatically. Not part of `up`:
+  #   docker compose --profile wikimedia build wikimedia-build
+  #   docker compose --profile wikimedia run --rm wikimedia-build once          # one build now (resumable after a failure)
+  #   docker compose --profile wikimedia up -d wikimedia-build                  # every GEO_WIKIMEDIA_BUILD_DAYS days at GEO_WIKIMEDIA_BUILD_AT
+  wikimedia-build:
+    profiles: ["wikimedia"]
+    build:
+      context: ./geo-service/wikimedia-build
+    image: wikimedia-build
+    container_name: wikimedia-build
+    restart: "no"
+    shm_size: "4gb"                    # PostgreSQL parallel queries need shared memory; Docker's default of 64 MB ends in "could not resize shared memory segment"
+    command: ["schedule"]
+    volumes:
+      - ${GEO_WIKIMEDIA_HOST_DIR:-./wikimedia}:/out                         # result: wikimedia_importance-YYYYMMDD.tsv.gz + wikimedia_importance.tsv.gz
+      - ${GEO_WIKIMEDIA_WORK_HOST_DIR:-./wikimedia-work}:/work              # downloads and CSVs (~60 GB)
+      - ${GEO_WIKIMEDIA_PGDATA_HOST_DIR:-./wikimedia-pgdata}:/pgdata        # PostgreSQL (~90 GB while building)
+    environment:
+      - PUID=${PUID:-1026}
+      - PGID=${PGID:-100}
+      - GEO_WIKIMEDIA_LANGUAGES=${GEO_WIKIMEDIA_LANGUAGES:-}
+      - GEO_WIKIMEDIA_BUILD_DAYS=${GEO_WIKIMEDIA_BUILD_DAYS:-30}
+      - GEO_WIKIMEDIA_BUILD_AT=${GEO_WIKIMEDIA_BUILD_AT:-03:00}
+      - GEO_WIKIMEDIA_KEEP=${GEO_WIKIMEDIA_KEEP:-2}
+      - GEO_WIKIMEDIA_KEEP_WORK=${GEO_WIKIMEDIA_KEEP_WORK:-0}
+
+  # Sights index builder: reads your Nominatim planet file READ-ONLY, writes /data/sights.sqlite (next to the cache).
+  # Not part of `up`; run it when you want to (re)build:
+  #   docker compose --profile import build sights-import
+  #   docker compose --profile import run --rm sights-import all       # build + Wikidata (resumable: run again to continue)
+  #   docker compose --profile import run --rm sights-import status
+  sights-import:
+    profiles: ["import"]
+    build:
+      context: ./geo-service
+      dockerfile: Dockerfile.import
+    image: sights-import
+    container_name: sights-import
+    restart: "no"
+    user: "${PUID:-1026}:${PGID:-100}"      # must be able to write the data folder
+    volumes:
+      - ${GEO_DATA_HOST_DIR:-./geo-data}:/data                  # sights.sqlite and the temporary work folder (a few GB while building)
+      - ${GEO_OSM_PBF_HOST_DIR:-./osm}:/osm:ro                  # folder with planet-latest.osm.pbf (mounted read-only)
+      - ${GEO_DOWNLOAD_HOST_DIR:-./downloads}:/downloads               # automatic updates: downloaded source files (kept: newest + last used)
+      - ${GEO_WIKIMEDIA_HOST_DIR:-./wikimedia}:/wikimedia:ro                 # folder with wikimedia-importance.sql.gz (read-only)
+    environment:
+      - GEO_SIGHTS_DB=${GEO_SIGHTS_DB:-}
+      - GEO_SIGHTS_WORK_DIR=${GEO_SIGHTS_WORK_DIR:-}
+      - GEO_OSM_PBF_FILE=${GEO_OSM_PBF_FILE:-/osm/planet-latest.osm.pbf}
+      - GEO_SIGHTS_OSMIUM_INDEX=${GEO_SIGHTS_OSMIUM_INDEX:-flex_mem}
+      - GEO_SIGHTS_WD_DELAY=${GEO_SIGHTS_WD_DELAY:-1.0}
+      - GEO_SIGHTS_WD_WORKERS=${GEO_SIGHTS_WD_WORKERS:-2}
+      - GEO_SIGHTS_WD_MAXLAG=${GEO_SIGHTS_WD_MAXLAG:-0}
+      - GEO_SIGHTS_WD_CONTACT=${GEO_SIGHTS_WD_CONTACT:-}
+      - GEO_WIKIMEDIA_IMPORTANCE_FILE=${GEO_WIKIMEDIA_IMPORTANCE_FILE:-/wikimedia/wikimedia-importance.sql.gz}
+      - AI_PROVIDER=${AI_PROVIDER:-ollama}
+      - OLLAMA_URL=${OLLAMA_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
+      - GOOGLE_AI_MODEL=${GOOGLE_AI_MODEL:-}
+      - OLLAMA_MODEL_TEXT=${OLLAMA_MODEL_TEXT:-}
+      - GOOGLE_AI_MODEL_TEXT=${GOOGLE_AI_MODEL_TEXT:-}
+      - GEO_SIGHTS_TR_SCOPE=${GEO_SIGHTS_TR_SCOPE:-notable}
+      - GEO_SIGHTS_TR_MAX=${GEO_SIGHTS_TR_MAX:-0}
+      - GEO_SIGHTS_TR_SLEEP=${GEO_SIGHTS_TR_SLEEP:-0}
+      - GEO_SIGHTS_TR_TIMEOUT=${GEO_SIGHTS_TR_TIMEOUT:-60}
+      - GEO_SIGHTS_TR_RETRY=${GEO_SIGHTS_TR_RETRY:-0}
+      - GEO_SIGHTS_TR_LEN_FACTOR=${GEO_SIGHTS_TR_LEN_FACTOR:-4}
+      - GEO_SIGHTS_TR_LEN_MIN=${GEO_SIGHTS_TR_LEN_MIN:-200}
+      - GEO_SIGHTS_TR_BATCH=${GEO_SIGHTS_TR_BATCH:-10}
+      - GEO_SIGHTS_TR_WORKERS=${GEO_SIGHTS_TR_WORKERS:-2}
+      - GEO_SIGHTS_TR_LOG=${GEO_SIGHTS_TR_LOG:-1}
+      - GEO_POI_SKIP=${GEO_POI_SKIP:-}
+      - GEO_SIGHTS_WP_SCOPE=${GEO_SIGHTS_WP_SCOPE:-notable}
+      - GEO_SIGHTS_WP_LANGS=${GEO_SIGHTS_WP_LANGS:-de,en}
+      - GEO_SIGHTS_WP_MAX=${GEO_SIGHTS_WP_MAX:-0}
+      - GEO_SIGHTS_WP_DELAY=${GEO_SIGHTS_WP_DELAY:-0.5}
+      - GEO_SIGHTS_WP_WORKERS=${GEO_SIGHTS_WP_WORKERS:-2}
+      - GEO_SIGHTS_WP_SENTENCES=${GEO_SIGHTS_WP_SENTENCES:-3}
+      - GEO_SIGHTS_WP_MAXCHARS=${GEO_SIGHTS_WP_MAXCHARS:-400}
+      - GEO_SIGHTS_REFRESH_DAYS=${GEO_SIGHTS_REFRESH_DAYS:-0}
+      - GEO_SIGHTS_REFRESH_AT=${GEO_SIGHTS_REFRESH_AT:-03:30}
+      - GEO_SIGHTS_IMPORTANCE_URL=${GEO_SIGHTS_IMPORTANCE_URL:-https://downloads.opencagedata.com/public/wikimedia_importance/%YYYYMM%/wikimedia_importance.tsv.gz,https://nominatim.org/data/wikimedia-importance.csv.gz}
+      - GEO_SIGHTS_PBF_URL=${GEO_SIGHTS_PBF_URL:-}
+      - GEO_SIGHTS_REFRESH_WIKITEXT=${GEO_SIGHTS_REFRESH_WIKITEXT:-1}
+      - GEO_SIGHTS_REFRESH_TRANSLATE=${GEO_SIGHTS_REFRESH_TRANSLATE:-1}
+      - GEO_SIGHTS_REFRESH_FORCE_BUILD=${GEO_SIGHTS_REFRESH_FORCE_BUILD:-0}
+      - GEO_SIGHTS_KEEP_PREV=${GEO_SIGHTS_KEEP_PREV:-1}
+    command: ["all"]
+
+  # Automatic refresh (GEO_SIGHTS_REFRESH_DAYS > 0): downloads, rebuild, Wikidata, importance, Wikipedia texts, translation -- see sightsrefresh.py
+  #   docker compose --profile import build sights-import      (once; the image is shared)
+  #   docker compose --profile refresh up -d sights-refresh
+  sights-refresh:
+    profiles: ["refresh"]
+    image: sights-import
+    container_name: sights-refresh
+    restart: unless-stopped
+    user: "${PUID:-1026}:${PGID:-100}"      # must be able to write the data folder
+    volumes:
+      - ${GEO_DATA_HOST_DIR:-./geo-data}:/data                  # sights.sqlite and the temporary work folder (a few GB while building)
+      - ${GEO_OSM_PBF_HOST_DIR:-./osm}:/osm:ro                  # folder with planet-latest.osm.pbf (mounted read-only)
+      - ${GEO_DOWNLOAD_HOST_DIR:-./downloads}:/downloads               # automatic updates: downloaded source files (kept: newest + last used)
+      - ${GEO_WIKIMEDIA_HOST_DIR:-./wikimedia}:/wikimedia:ro                 # folder with wikimedia-importance.sql.gz (read-only)
+    environment:
+      - GEO_SIGHTS_DB=${GEO_SIGHTS_DB:-}
+      - GEO_SIGHTS_WORK_DIR=${GEO_SIGHTS_WORK_DIR:-}
+      - GEO_OSM_PBF_FILE=${GEO_OSM_PBF_FILE:-/osm/planet-latest.osm.pbf}
+      - GEO_SIGHTS_OSMIUM_INDEX=${GEO_SIGHTS_OSMIUM_INDEX:-flex_mem}
+      - GEO_SIGHTS_WD_DELAY=${GEO_SIGHTS_WD_DELAY:-1.0}
+      - GEO_SIGHTS_WD_WORKERS=${GEO_SIGHTS_WD_WORKERS:-2}
+      - GEO_SIGHTS_WD_MAXLAG=${GEO_SIGHTS_WD_MAXLAG:-0}
+      - GEO_SIGHTS_WD_CONTACT=${GEO_SIGHTS_WD_CONTACT:-}
+      - GEO_WIKIMEDIA_IMPORTANCE_FILE=${GEO_WIKIMEDIA_IMPORTANCE_FILE:-/wikimedia/wikimedia-importance.sql.gz}
+      - AI_PROVIDER=${AI_PROVIDER:-ollama}
+      - OLLAMA_URL=${OLLAMA_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
+      - GOOGLE_AI_MODEL=${GOOGLE_AI_MODEL:-}
+      - OLLAMA_MODEL_TEXT=${OLLAMA_MODEL_TEXT:-}
+      - GOOGLE_AI_MODEL_TEXT=${GOOGLE_AI_MODEL_TEXT:-}
+      - GEO_SIGHTS_TR_SCOPE=${GEO_SIGHTS_TR_SCOPE:-notable}
+      - GEO_SIGHTS_TR_MAX=${GEO_SIGHTS_TR_MAX:-0}
+      - GEO_SIGHTS_TR_SLEEP=${GEO_SIGHTS_TR_SLEEP:-0}
+      - GEO_SIGHTS_TR_TIMEOUT=${GEO_SIGHTS_TR_TIMEOUT:-60}
+      - GEO_SIGHTS_TR_RETRY=${GEO_SIGHTS_TR_RETRY:-0}
+      - GEO_SIGHTS_TR_LEN_FACTOR=${GEO_SIGHTS_TR_LEN_FACTOR:-4}
+      - GEO_SIGHTS_TR_LEN_MIN=${GEO_SIGHTS_TR_LEN_MIN:-200}
+      - GEO_SIGHTS_TR_BATCH=${GEO_SIGHTS_TR_BATCH:-10}
+      - GEO_SIGHTS_TR_WORKERS=${GEO_SIGHTS_TR_WORKERS:-2}
+      - GEO_SIGHTS_TR_LOG=${GEO_SIGHTS_TR_LOG:-1}
+      - GEO_POI_SKIP=${GEO_POI_SKIP:-}
+      - GEO_SIGHTS_WP_SCOPE=${GEO_SIGHTS_WP_SCOPE:-notable}
+      - GEO_SIGHTS_WP_LANGS=${GEO_SIGHTS_WP_LANGS:-de,en}
+      - GEO_SIGHTS_WP_MAX=${GEO_SIGHTS_WP_MAX:-0}
+      - GEO_SIGHTS_WP_DELAY=${GEO_SIGHTS_WP_DELAY:-0.5}
+      - GEO_SIGHTS_WP_WORKERS=${GEO_SIGHTS_WP_WORKERS:-2}
+      - GEO_SIGHTS_WP_SENTENCES=${GEO_SIGHTS_WP_SENTENCES:-3}
+      - GEO_SIGHTS_WP_MAXCHARS=${GEO_SIGHTS_WP_MAXCHARS:-400}
+      - GEO_SIGHTS_REFRESH_DAYS=${GEO_SIGHTS_REFRESH_DAYS:-0}
+      - GEO_SIGHTS_REFRESH_AT=${GEO_SIGHTS_REFRESH_AT:-03:30}
+      - GEO_SIGHTS_IMPORTANCE_URL=${GEO_SIGHTS_IMPORTANCE_URL:-https://downloads.opencagedata.com/public/wikimedia_importance/%YYYYMM%/wikimedia_importance.tsv.gz,https://nominatim.org/data/wikimedia-importance.csv.gz}
+      - GEO_SIGHTS_PBF_URL=${GEO_SIGHTS_PBF_URL:-}
+      - GEO_SIGHTS_REFRESH_WIKITEXT=${GEO_SIGHTS_REFRESH_WIKITEXT:-1}
+      - GEO_SIGHTS_REFRESH_TRANSLATE=${GEO_SIGHTS_REFRESH_TRANSLATE:-1}
+      - GEO_SIGHTS_REFRESH_FORCE_BUILD=${GEO_SIGHTS_REFRESH_FORCE_BUILD:-0}
+      - GEO_SIGHTS_KEEP_PREV=${GEO_SIGHTS_KEEP_PREV:-1}
+    command: ["schedule"]

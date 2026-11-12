@@ -1,0 +1,59 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }}</p>
+{% else %}
+<form id="apply-form">
+  {% include "_stepbar.html" %}
+  <input type="hidden" name="carry_id" value="{{ carry_id | default('') }}">
+  <input type="hidden" name="handoff_path" value="{{ handoff_path | default('') }}">
+  <input type="hidden" name="handoff_root_path" value="{{ handoff_root_path | default('') }}">
+
+  <p class="hint">
+    <span class="chip">{{ counts.files }} Datei(en) geprüft</span>
+    <span class="chip">{{ rows|length }} mit Lücken</span>
+    {% if counts.complete %}<span class="chip">{{ counts.complete }} vollständig</span>{% endif %}
+    {% if counts.no_xmp %}<span class="chip">{{ counts.no_xmp }} ohne .xmp</span>{% endif %}
+    {% if counts.no_pos %}<span class="chip">{{ counts.no_pos }} ohne Position im .xmp</span>{% endif %}
+    {% for g, label, n in per_group %}<span class="chip">{{ label }}: {{ n }}</span>{% endfor %}
+  </p>
+  {% if counts.no_pos %}<p class="muted">Dateien ohne Position im Sidecar können hier nichts bekommen – erst „GPS füllen“ bzw. „GPS Sidecar“ laufen lassen.</p>{% endif %}
+
+  {% if not rows %}
+  <p class="muted">Nichts nachzufüllen in diesem Schritt.</p>
+  {% if carry_id %}
+  <div class="actions-row"><a class="btn-ghost" href="/ai/?handoff_id={{ carry_id }}">Weiter zu AI-Beschreibung →</a></div>
+  {% endif %}
+  {% else %}
+  <div class="list-toolbar">
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('#apply-form .row-checkbox').forEach(c=>c.checked=true)">Alle auswählen</button>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('#apply-form .row-checkbox').forEach(c=>c.checked=false)">Keine</button>
+  </div>
+  <div class="rows">
+    {% for r in rows %}
+    <label class="row">
+      <input type="checkbox" class="row-checkbox" name="selected" value="{{ r.path }}" checked>
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row"><span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+          <span class="meta-label">{{ "🎬 Video" if r.is_video else "🖼 Foto" }} · 📍 {{ "%.4f"|format(r.lat) }}, {{ "%.4f"|format(r.lon) }}</span></div>
+        {% if r.rel_dir %}<div class="subdir-badge">📁 {{ r.rel_dir }}</div>{% endif %}
+        <div class="meta-row"><span class="meta-label">fehlt: {{ r.missing_labels | join(", ") }}{% if r.stale %} · Ort/Sehenswürdigkeiten mit älterem Datenstand aufgelöst{% endif %}</span></div>
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  <div class="actions-row sticky-bottom">
+    {% for g, label in groups %}<label class="opt"><input type="checkbox" name="groups" value="{{ g }}" checked> {{ label }}</label>{% endfor %}
+    <label class="opt" title="Standard: nur Fehlendes ergänzen, vorhandene Werte bleiben unangetastet"><input type="checkbox" name="overwrite" value="1"> vorhandene Kontext-Werte neu schreiben</label>
+    <label class="opt" title="Höhe + IPTC (Credit, Source, Datum) und der restliche Sidecar-Stand werden in das Foto geschrieben; Videos werden nie verändert"><input type="checkbox" name="embed" value="1"> Fotos: ins Bild einbetten (Höhe, IPTC)</label>
+    <button type="button" class="btn-primary" hx-post="/ctxfill/apply" hx-include="closest form" hx-target="#results-panel" hx-indicator="#apply-spinner"
+            {% if not service_enabled %}disabled title="GEO_SERVICE_URL fehlt"{% endif %}>
+      🧩 Fehlendes nachfüllen
+    </button>
+    <span id="apply-spinner" class="htmx-indicator spinner">füllt…</span>
+  </div>
+  {% endif %}
+</form>
+{% endif %}

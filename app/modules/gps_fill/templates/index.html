@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPS füllen — Metadata Suite</title>
+<script defer src="/static/htmx.min.js"></script>
+<script defer src="/static/clear-results.js"></script>
+<script src="/static/safe-observer.js"></script>
+<script defer src="/static/alpine.min.js"></script>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/favicon-192.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>📍 GPS füllen</h1>
+  <nav class="modules-nav">
+    <a class="module-pill info-pill" href="/" title="Start (Dashboard)" aria-label="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></svg></a>
+    <a class="module-pill" href="/timestamp/">Timestamp</a>
+    <a class="module-pill" href="/gps/">GPS Sidecar</a>
+    <span class="module-pill active">GPS füllen</span>
+    <a class="module-pill" href="/geooverrides/">Geo-Overrides</a>
+    <a class="module-pill" href="/ctxfill/">Kontext nachfüllen</a>
+    <a class="module-pill" href="/ai/">AI-Beschreibung</a>
+    <a class="module-pill" href="/nfo/">NFO Maker</a>
+    <a class="module-pill" href="/collage/">Collage</a>
+    <a class="module-pill" href="/mtime/">Datei-Zeitstempel</a>
+    <a class="module-pill" href="/shortvideos/">Kurzvideos löschen</a>
+    <a class="module-pill" href="/year/">Jahreslauf</a>
+    <a class="module-pill info-pill" href="/endpoints/" title="Endpunkte des geo-service (Links mit deinen Beispielorten)" aria-label="Endpunkte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></a>
+    <a class="module-pill info-pill" href="/docs/" title="Dokumentation (README)" aria-label="Dokumentation"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 7.5h6"/><path d="M9.5 11h6"/></svg></a>
+    <a class="module-pill info-pill" href="/info/" title="Info: Versionen, Umgebung, Pfade" aria-label="Info"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></a>
+  </nav>
+</header>
+
+<main x-data="gpsFillApp()" x-init="initLastDepth(); initLastPath()">
+  <section class="panel">
+    <form id="browse-form" hx-post="/gpsfill/scan/start" hx-target="#file-list" hx-indicator="#browse-spinner">
+      <div class="field-grid">
+        <div class="path-row">
+          <label class="root-folder-field">
+            <span class="label-text">Basis-Ordner
+              <span class="info-icon" tabindex="0" title="Wurzelordner, in dem gesucht wird. Pfad darf nur dieser Ordner selbst oder ein Unterordner davon sein.">ⓘ</span>
+            </span>
+            <select name="root_path" id="root-folder-select" @change="selectRootFolder($event.target)">
+              {% for rf in root_folders %}
+              <option value="{{ rf.path }}"
+                      {% if (prefill_root_path and rf.path == prefill_root_path) or (not prefill_root_path and loop.first) %}selected{% endif %}>{{ rf.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="field-path">
+            <span class="label-text">Pfad
+              <span class="info-icon" tabindex="0" title="Ordner mit Fotos/Videos (rekursiv bis Tiefe), oder direkt eine einzelne Datei.">ⓘ</span>
+            </span>
+            <div class="path-input-row">
+              <input type="text" name="path" id="f-path" required list="path-suggestions"
+                     placeholder="{{ root_folders[0].path if root_folders else '/mnt/NAS/...' }}"
+                     value="{{ prefill_path or (root_folders[0].path if root_folders else (media_root or '')) }}"
+                     hx-get="/gpsfill/subfolders" hx-trigger="input changed delay:300ms, focus"
+                     hx-target="#path-suggestions" hx-swap="innerHTML"
+                     hx-vals="js:{root_path: document.getElementById('root-folder-select').value}"
+                     @input="onPathInput($event.target)">
+              <button type="button" class="btn-icon" @click="goUpOneLevel()"
+                      title="Eine Ordnerebene nach oben (nie über den Basis-Ordner hinaus)">⬆️</button>
+            </div>
+            <datalist id="path-suggestions"></datalist>
+          </label>
+
+          <label>
+            <span class="label-text">Tiefe
+              <span class="info-icon" tabindex="0" title="Wie viele Ordnerebenen unter Pfad durchsucht werden. 0 = nur der angegebene Ordner selbst, 1-7 = so viele Ebenen darunter.">ⓘ</span>
+            </span>
+            <input type="number" name="depth" id="f-depth" min="0" max="7" value="3" style="width: 5em"
+                   @change="_setLastDepth($event.target.value)">
+          </label>
+
+        </div>
+        <div class="path-row">
+          <label>
+            <span class="label-text">Kamera
+              <span class="info-icon" tabindex="0" title="Nur Dateien, deren Make/Model (oder NFO-Gerätename) diesen Text enthält, z. B. „Luna Ultra“. Leer = alle.">ⓘ</span>
+            </span>
+            <input type="text" name="camera" placeholder="alle" style="width: 12em">
+          </label>
+          <label>
+            <span class="label-text">Uhr-Abweichung
+              <span class="info-icon" tabindex="0" title="auto: pro Kamera/Tag aus Dateien mit eigenem GPS geschätzt (Satellitenzeit bzw. Track-Abgleich). off: Uhr stimmt. Zahl: feste Abweichung in Sekunden (Kamera-Uhr minus echte Zeit, z. B. 3600 wenn die Kamera 1 h vorgeht).">ⓘ</span>
+            </span>
+            <input type="text" name="drift" value="auto" style="width: 6em">
+          </label>
+          <label>
+            <span class="label-text">Mindest-Konfidenz
+              <span class="info-icon" tabindex="0" title="Dateien unter diesem Wert (0–1) werden nicht gefüllt, sondern nur aufgelistet. Faustregel: ≥0,7 sicher, 0,4–0,7 plausibel, darunter geraten.">ⓘ</span>
+            </span>
+            <input type="number" name="min_conf" min="0" max="1" step="0.05" value="0.3" style="width: 5em">
+          </label>
+          <label>
+            <span class="label-text">Lücke (min)
+              <span class="info-icon" tabindex="0" title="Stufe 1: nächster Track-Punkt höchstens so weit entfernt (Standard GEO_MAX_GAP_SECS).">ⓘ</span>
+            </span>
+            <input type="number" name="gap_min" min="1" value="{{ gap_min }}" style="width: 5em">
+          </label>
+          <label>
+            <span class="label-text">Max. Lücke (min)
+              <span class="info-icon" tabindex="0" title="Stufe 2: ab hier kein Treffer mehr (Standard GEO_MAX_GAP_SECS_TIER2).">ⓘ</span>
+            </span>
+            <input type="number" name="gap2_min" min="1" value="{{ gap2_min }}" style="width: 6em">
+          </label>
+          <label>
+            <span class="label-text">Zeitzone (ohne Offset)
+              <span class="info-icon" tabindex="0" title="Nur für Dateien ganz ohne Zeitzonen-Angabe (weder im Sidecar noch in der Datei noch im Ordner). Falsch bei Reisen ins Ausland – solche Dateien werden in der Liste markiert.">ⓘ</span>
+            </span>
+            <input type="text" name="tz" value="{{ default_tz }}" style="width: 11em">
+          </label>
+        </div>
+        <div class="path-row">
+          <label title="Letzte Rückfallstufe, wenn der Track nichts liefert: Position der zeitlich nächsten Datei mit eigenem GPS im selben Ordner oder in Unterordnern am selben Tag (Konfidenz höchstens 0,5, Quelle „neighbor-file“)"><input type="checkbox" name="neighbor" value="1" checked> Nachbardatei im Ordner und Unterordnern (selber Tag) als Ersatz</label>
+          <label title="Höchster zeitlicher Abstand zur Nachbardatei in Stunden; 0 = beliebig, solange am selben Tag">max. Abstand (h) <input type="number" name="neighbor_h" min="0" step="0.5" value="6" style="width: 4.5em"></label>
+          <label><input type="checkbox" name="force" value="1"> GPS im Sidecar ersetzen</label>
+          <label><input type="checkbox" name="retry" value="1"> „kein GPS gefunden“-Markierte erneut versuchen</label>
+          <label><input type="checkbox" name="include_import" value="1"> Dawarich-Import-Konto mitnutzen (Achtung: aus Fotos abgeleitet, für die Uhr-Schätzung zirkulär)</label>
+        </div>
+      </div>
+
+      {% if not service_enabled %}
+      <p class="error">⚠ GEO_SERVICE_URL ist nicht gesetzt – dieses Modul holt Tracks nur über den geo-service.</p>
+      {% else %}
+      <p class="hint">Füllt Fotos/Videos <strong>ohne</strong> GPS aus dem Track (geo-service: <code>{{ service_url }}</code>): Position wird zwischen den zwei
+      umgebenden Track-Punkten interpoliert, mit Konfidenz je Datei; eine falsche Kamera-Uhr wird pro Kamera und Tag aus Dateien mit eigenem GPS
+      erkannt und korrigiert. Geschrieben wird nur die <code>.xmp</code>-Sidecar-Datei (inkl. Herkunft/Konfidenz in <code>XMP-mon:*</code>) – die Mediendatei bleibt unberührt.</p>
+      {% endif %}
+
+      <div class="actions-row">
+        <button type="submit" class="btn-primary">Vorschau laden</button>
+        <span id="browse-spinner" class="htmx-indicator spinner">sucht…</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" id="file-list">
+    <p class="muted">Pfad wählen und „Vorschau laden" klicken.</p>
+  </section>
+
+  <section class="panel" id="weather-panel">
+    <details>
+      <summary><strong>🌦 Wetter-Archiv füllen</strong> <span class="muted">(Schattendatenbank im geo-service)</span></summary>
+      <p class="hint">Holt das Wetter für alle Orte und Tage, an denen du warst, <em>einmal</em> von Open-Meteo und legt es dauerhaft im geo-service ab
+        (Zellen zu 0,1° ≈ 11 km, ein Tag = ein Abruf). Danach kommen AI-Kontext und <code>XMP-mon:Ctx*</code> ohne Internet aus.
+        Quellen: Fotos/Videos im Pfad oben (nur mit Zeit und GPS in Sidecar/EXIF) und/oder die Tracks aus Traccar/Dawarich.
+        Alle angefragten Tage bis einschließlich heute werden archiviert (auch wenn sich die Werte der letzten Tage später noch minimal ändern); nur Tage in der Zukunft nicht. Braucht <code>WEATHER_PROVIDER=open-meteo</code> am geo-service.</p>
+      <form autocomplete="off" data-bwignore="true" data-lpignore="true" data-1p-ignore hx-post="/gpsfill/weather/start" hx-target="#weather-out"
+            hx-on::response-error="document.getElementById('weather-out').innerHTML = '<p class=&quot;error&quot;>⚠ Fehler ' + event.detail.xhr.status + ': ' + (event.detail.xhr.responseText || '').replace(/<[^>]*>/g, ' ').slice(0, 300) + '</p>'"
+            hx-on::send-error="document.getElementById('weather-out').innerHTML = '<p class=&quot;error&quot;>⚠ Server nicht erreichbar.</p>'"
+            hx-include="#browse-form [name=path], #browse-form [name=root_path], #browse-form [name=depth]">
+        <div class="field-grid">
+          <label class="inline"><input type="checkbox" name="use_media" value="1" checked> Fotos/Videos im Pfad oben (Tiefe wie oben)</label>
+          <label class="inline"><input type="checkbox" name="use_tracks" value="1" checked> Tracks (Traccar/Dawarich)</label>
+          <label class="inline"><input type="checkbox" name="include_import" value="1" checked> Dawarich-Backup (Import) einbeziehen</label>
+          <label class="inline"><input type="checkbox" name="all_devices" value="1"> auch weitere Traccar-Geräte (<code>TRACCAR_DEVICES_ADDITIONAL</code>)</label>
+          <label>Von <input autocomplete="off" data-bwignore="true" data-lpignore="true" data-1p-ignore type="date" name="date_from" value="1900-01-01"></label>
+          <label>Bis <input autocomplete="off" data-bwignore="true" data-lpignore="true" data-1p-ignore type="date" name="date_to" id="wx-date-to" value="{{ today }}"></label>
+          <label class="inline"><input type="checkbox" name="dry_run" value="1"> Nur prüfen (nichts abrufen, nur zählen)</label>
+          <label>Schon gespeicherte Tage
+            <select name="refresh">
+              <option value="none" selected>überspringen</option>
+              <option value="bad">defekte/unvollständige neu holen</option>
+              <option value="all">alle neu holen (viele Abrufe!)</option>
+            </select></label>
+        </div>
+        <p class="hint">Von/Bis gelten für die Tracks. Vorgabe: 01.01.1900 bis heute (immer das aktuelle Datum). Leere Zeiträume werden im geo-service blockweise übersprungen (ein Abruf je 90 Tage); das Wetter-Archiv selbst beginnt 1940.</p>
+        <div class="actions-row"><button type="submit" class="btn-primary">Archiv füllen</button></div>
+      </form>
+      <div id="weather-out"></div>
+    </details>
+  </section>
+
+  <section class="panel" id="results-panel"></section>
+</main>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => { const e = document.getElementById('wx-date-to'); if (e) { const d = new Date(); e.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); } });
+function gpsFillApp() {
+  return {
+    _lastPathKey(name) { return 'metadata-suite:lastpath:' + name; },
+    _lastPathFor(name) {
+      try { return localStorage.getItem(this._lastPathKey(name)); } catch (e) { return null; }
+    },
+    _setLastPathFor(name, value) {
+      try { localStorage.setItem(this._lastPathKey(name), value); } catch (e) {}
+    },
+    _clearLastPathFor(name) {
+      try { localStorage.removeItem(this._lastPathKey(name)); } catch (e) {}
+    },
+    _lastRootKey() { return 'metadata-suite:lastroot'; },
+    _lastRoot() {
+      try { return localStorage.getItem(this._lastRootKey()); } catch (e) { return null; }
+    },
+    _setLastRoot(name) {
+      try { localStorage.setItem(this._lastRootKey(), name); } catch (e) {}
+    },
+    _setLastDepth(value) {
+      try { sessionStorage.setItem('metadata-suite:lastdepth', value); } catch (e) {}
+    },
+    initLastDepth() {
+      try {
+        const saved = sessionStorage.getItem('metadata-suite:lastdepth');
+        if (saved) document.getElementById('f-depth').value = saved;
+      } catch (e) {}
+    },
+    selectRootFolder(selectEl, persist = true) {
+      const opt = selectEl.selectedOptions[0];
+      if (!opt) return;
+      const saved = this._lastPathFor(opt.text);
+      document.getElementById('f-path').value = saved || opt.value;
+      document.getElementById('path-suggestions').innerHTML = '';
+      if (persist) this._setLastRoot(opt.text);
+    },
+    onPathInput(inputEl) {
+      const sel = document.getElementById('root-folder-select');
+      const opt = sel.selectedOptions[0];
+      if (!opt) return;
+      const val = inputEl.value.trim();
+      if (val === '') {
+        inputEl.value = opt.value;
+        this._clearLastPathFor(opt.text);
+      } else {
+        this._setLastPathFor(opt.text, val);
+      }
+      this._setLastRoot(opt.text);
+    },
+    goUpOneLevel() {
+      const input = document.getElementById('f-path');
+      const sel = document.getElementById('root-folder-select');
+      const opt = sel.selectedOptions[0];
+      const rootPath = (opt ? opt.value : '').replace(/\/+$/, '');
+      const val = input.value.trim().replace(/\/+$/, '');
+      if (!val || val === rootPath) return;
+      const idx = val.lastIndexOf('/');
+      let parent = idx > 0 ? val.slice(0, idx) : '/';
+      if (!(parent === rootPath || parent.startsWith(rootPath + '/'))) {
+        parent = rootPath;
+      }
+      input.value = parent;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+    initLastPath() {
+      const sel = document.getElementById('root-folder-select');
+      if (!sel) return;
+      const lastRoot = this._lastRoot();
+      if (lastRoot) {
+        const match = Array.from(sel.options).find(o => o.text === lastRoot);
+        if (match) match.selected = true;
+      }
+      this.selectRootFolder(sel, false);
+    },
+  }
+}
+</script>
+</body>
+</html>

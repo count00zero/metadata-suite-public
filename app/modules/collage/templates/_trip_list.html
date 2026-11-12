@@ -1,0 +1,49 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }} „Collagen suchen" erneut klicken, um von vorn zu beginnen.</p>
+{% else %}
+<form id="generate-form" hx-post="/collage/generate/start" hx-target="#results-panel" hx-indicator="#generate-spinner"
+      hx-include="#browse-form">
+  <input type="hidden" name="all_trips" value='{{ all_trips_json }}'>
+
+  <div class="list-toolbar">
+    <span>{{ trips|length }} Collage(n) gefunden{% if scanned_path %} unter <code>{{ scanned_path }}</code>{% endif %}</span>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=true)">Alle auswählen</button>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=false)">Keine</button>
+  </div>
+
+  {% if trips|length == 0 %}
+  <p class="muted">Keine Ordner mit Bildern gefunden.</p>
+  {% endif %}
+
+  <div class="rows">
+    {% for t in trips %}
+    <label class="row {% if t.already_exists %}row-warn{% endif %}">
+      <input type="checkbox" class="row-checkbox" name="selected" value="{{ t.path }}" {% if not t.already_exists %}checked{% endif %}>
+      <img class="thumb" loading="lazy"
+           src="{% if t.already_exists %}/timestamp/thumb?path={{ t.output_path | urlencode }}{% else %}/timestamp/thumb?path={{ t.path | urlencode }}{% endif %}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ t.path }}">{{ t.name }}</span>
+          <span class="meta-label">({{ t.image_count }} Bild(er))</span>
+        </div>
+        {% if t.already_exists %}
+        <div class="warn">⚠ <code>{{ t.name }}.jpg</code> existiert bereits — wird ohne „überschreiben“ übersprungen.</div>
+        {% endif %}
+        {% if t.image_count == 0 %}
+        <div class="warn">⚠ Keine Bilder gefunden — wird übersprungen.</div>
+        {% endif %}
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  {% if trips|length > 0 %}
+  <div class="actions-row sticky-bottom">
+    <button type="submit" class="btn-primary btn-execute" id="exec-btn">Collagen erstellen</button>
+    <span id="generate-spinner" class="htmx-indicator spinner">wird erstellt…</span>
+  </div>
+  {% endif %}
+</form>
+{% endif %}

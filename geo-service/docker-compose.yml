@@ -1,0 +1,261 @@
+# geo-service -- add this as a service to your homelab stack, or run it standalone:
+#   cp .env.example .env   (adjust)   &&   docker compose up -d --build
+# Values come from .env (same folder); keep your settings there so this file can be replaced freely.
+
+services:
+  geo-service:
+    build: .
+    image: geo-service
+    container_name: geo-service
+    restart: always
+    user: "${PUID:-1026}:${PGID:-100}"      # set PUID/PGID in .env -- must be able to write ./data
+    ports:
+      - "8430:8000"                        # pick any free host port
+      - "8431:8001"                        # Nominatim API (Traccar: geocoder nominatim; Dawarich: NOMINATIM_API_HOST)
+      - "8432:8002"                        # Photon API (Dawarich: PHOTON_API_HOST)
+    volumes:
+      # Host paths come from .env (left side); container paths are fixed.
+      - ${GEO_DATA_HOST_DIR:-./data}:/data                     # geo-cache.sqlite, overrides.json, srtm/ tiles
+      - ${GEONAMES_HOST_DIR:-./geonames}:/geonames:ro            # folder with your GeoNames files (countryInfo.txt is read from here)
+    labels:
+      - autoheal=true                      # for willfarrell/autoheal; the healthcheck only tests the service itself
+    environment:
+      # reverse geocoding -- same variable names as the metadata-suite's .env
+      - PHOTON_SERVER=${PHOTON_SERVER:-}
+      - NOMINATIM_SERVER=${NOMINATIM_SERVER:-}
+      - PELIAS_SERVER=${PELIAS_SERVER:-}
+      - MARITIME_SERVER=${MARITIME_SERVER:-}
+      - GEO_LANG=${GEO_LANG:-de}
+      - GEO_CHAIN=${GEO_CHAIN:-photon,nominatim,pelias,gazetteer}
+      - GEO_HTTP_TIMEOUT=${GEO_HTTP_TIMEOUT:-5}
+      - GEO_BREAKER_FAILURES=${GEO_BREAKER_FAILURES:-3}
+      - GEO_BREAKER_COOLDOWN=${GEO_BREAKER_COOLDOWN:-60}
+      # cache
+      - GEO_CACHE_PRECISION=${GEO_CACHE_PRECISION:-4}
+      - GEO_CACHE_TTL_DAYS=${GEO_CACHE_TTL_DAYS:-365}
+      - GEO_CACHE_NEG_TTL=${GEO_CACHE_NEG_TTL:-3600}
+      # GPS tracks
+      - TRACCAR_URL=${TRACCAR_URL:-}
+      - TRACCAR_TOKEN=${TRACCAR_TOKEN:-}
+      - TRACCAR_DEVICES=${TRACCAR_DEVICES:-}
+      - TRACCAR_DEVICES_ADDITIONAL=${TRACCAR_DEVICES_ADDITIONAL:-}
+      - DAWARICH_SERVER=${DAWARICH_SERVER:-}
+      - DAWARICH_API_KEY=${DAWARICH_API_KEY:-}
+      - DAWARICH_IMPORT_API_KEY=${DAWARICH_IMPORT_API_KEY:-}
+      - GEO_MAX_GAP_SECS=${GEO_MAX_GAP_SECS:-600}
+      - GEO_MAX_GAP_SECS_TIER2=${GEO_MAX_GAP_SECS_TIER2:-21600}
+      # caption context
+      - WEATHER_BACKFILL_DELAY=${WEATHER_BACKFILL_DELAY:-0.4}
+      - WEATHER_BACKFILL_MAX=${WEATHER_BACKFILL_MAX:-5000}
+      - WEATHER_PROVIDER=${WEATHER_PROVIDER:-none}     # none | open-meteo (only third party this service ever calls)
+      - GEO_DEFAULT_TZ=${GEO_DEFAULT_TZ:-Europe/Vienna}
+      # access: set a token if the port is reachable beyond a trusted LAN (track data is location history!)
+      - GEO_SERVICE_TOKEN=${GEO_SERVICE_TOKEN:-}
+      # Nominatim-/Photon-compatible ports (container side; 0 = off). Open by default (location lookups only);
+      # GEO_COMPAT_AUTH=true asks for the token as ?token= / ?key= / X-Api-Key
+      - GEO_NOMINATIM_PORT=${GEO_NOMINATIM_PORT:-8001}
+      - GEO_PHOTON_PORT=${GEO_PHOTON_PORT:-8002}
+      - GEO_COMPAT_AUTH=${GEO_COMPAT_AUTH:-false}
+      # GeoNames-compatible endpoints (findNearbyPlaceName, findNearbyPostalCodes, search, get, hierarchy, countryInfo, address) -- replaces the geonames-wrapper container.
+      # The old wrapper variable names (MAX_ROWS_LIMIT, POSTAL_PROBE_*, HTTP_TIMEOUT_SECONDS) still work as fallbacks.
+      - GN_HTTP_TIMEOUT=${GN_HTTP_TIMEOUT:-${HTTP_TIMEOUT_SECONDS:-10}}
+      - GN_MAX_ROWS_LIMIT=${GN_MAX_ROWS_LIMIT:-${MAX_ROWS_LIMIT:-50}}
+      - GN_POSTAL_PROBE_RINGS=${GN_POSTAL_PROBE_RINGS:-${POSTAL_PROBE_RINGS:-2}}
+      - GN_POSTAL_PROBE_POINTS_PER_RING=${GN_POSTAL_PROBE_POINTS_PER_RING:-${POSTAL_PROBE_POINTS_PER_RING:-8}}
+      - GN_POSTAL_PROBE_CONCURRENCY=${GN_POSTAL_PROBE_CONCURRENCY:-${POSTAL_PROBE_CONCURRENCY:-6}}
+      - GN_CHILDREN_MAX_PROBES=${GN_CHILDREN_MAX_PROBES:-400}
+      - GN_SEARCH_ORDER=${GN_SEARCH_ORDER:-${SEARCH_BACKEND_ORDER:-gazetteer,pelias,nominatim,photon}}
+      - GN_COUNTRY_INFO_FILE=${GN_COUNTRY_INFO_FILE:-}
+      - ELEVATION_PROVIDER=${ELEVATION_PROVIDER:-local,open-meteo}
+      - GEO_SRTM_PRELOAD=${GEO_SRTM_PRELOAD:-austria}
+      - GEO_TRACK_TIMEOUT=${GEO_TRACK_TIMEOUT:-60}
+      - WEATHER_ARCHIVE_URL=${WEATHER_ARCHIVE_URL:-https://archive-api.open-meteo.com/v1/archive}
+      - WEATHER_FORECAST_URL=${WEATHER_FORECAST_URL:-https://api.open-meteo.com/v1/forecast}
+      - ELEVATION_URL=${ELEVATION_URL:-https://api.open-meteo.com/v1/elevation}
+      - GEO_SRTM_SOURCE_URL=${GEO_SRTM_SOURCE_URL:-https://elevation-tiles-prod.s3.amazonaws.com/skadi}
+      - GN_ID_DB=${GN_ID_DB:-}
+      - GN_GAZETTEER_DB=${GN_GAZETTEER_DB:-}
+      - GN_GAZETTEER_LANGS=${GN_GAZETTEER_LANGS:-de,en}
+      - GN_GAZETTEER_FTS_CLASSES=${GN_GAZETTEER_FTS_CLASSES:-}
+      - GN_GAZETTEER_REVERSE_KM=${GN_GAZETTEER_REVERSE_KM:-25}
+      - GN_DUMP_DIR=${GN_DUMP_DIR:-}
+      - GEO_OVERRIDES_FILE=${GEO_OVERRIDES_FILE:-}
+      # map in the override editor (raster tiles of your tileserver-GL; the browser must reach the URL)
+      - GEO_TILE_URL=${GEO_TILE_URL:-}
+      - GEO_TILE_ATTRIBUTION=${GEO_TILE_ATTRIBUTION:-}
+      - GEO_TILE_MAXZOOM=${GEO_TILE_MAXZOOM:-19}
+      - GEO_TILE_PROXY=${GEO_TILE_PROXY:-false}
+      - GEO_RADAR_STYLE_URL=${GEO_RADAR_STYLE_URL:-}
+      - GEO_RADAR_API=${GEO_RADAR_API:-https://api.rainviewer.com/public/weather-maps.json}
+      - GEO_RADAR_COLOR=${GEO_RADAR_COLOR:-2}
+      - GEO_RADAR_OPTIONS=${GEO_RADAR_OPTIONS:-1_0}
+      - GEO_RADAR_MAXZOOM=${GEO_RADAR_MAXZOOM:-7}
+      # context extras: home, trips, sights, place names
+      - GEO_HOME_COUNTRY=${GEO_HOME_COUNTRY:-AT}
+      - GEO_HOME_LAT=${GEO_HOME_LAT:-0}
+      - GEO_HOME_LON=${GEO_HOME_LON:-0}
+      - GEO_TRIP_AWAY_KM=${GEO_TRIP_AWAY_KM:-60}
+      - GEO_TRIP_MIN_DAYS=${GEO_TRIP_MIN_DAYS:-2}
+      - GEO_TRIP_MAX_GAP_DAYS=${GEO_TRIP_MAX_GAP_DAYS:-1}
+      - GEO_TRIP_LOOKBACK_DAYS=${GEO_TRIP_LOOKBACK_DAYS:-45}
+      - GEO_PLACE_TRIP_KM=${GEO_PLACE_TRIP_KM:-100}
+      - GEO_POI=${GEO_POI:-true}
+      - GEO_POI_RADIUS_M=${GEO_POI_RADIUS_M:-400}
+      - GEO_POI_MAX=${GEO_POI_MAX:-3}
+      - GEO_POI_SKIP=${GEO_POI_SKIP:-}
+      - GEO_NORMALIZE_NAMES=${GEO_NORMALIZE_NAMES:-true}
+      - GEO_NAME_ALIASES_FILE=${GEO_NAME_ALIASES_FILE:-}
+      - GEO_SLOW_LOG_MS=${GEO_SLOW_LOG_MS:-500}
+      - GEO_SIGHTS_DB=${GEO_SIGHTS_DB:-}
+      - GEO_TOP_SIGHT_M=${GEO_TOP_SIGHT_M:-60}
+      - GEO_TOP_SIGHT_MIN_IMPORTANCE=${GEO_TOP_SIGHT_MIN_IMPORTANCE:-0.30}
+
+  # Builds wikimedia_importance.tsv.gz yourself (Nominatim's generator + PostgreSQL inside the container): ~150 GB disk, 9-12 h.
+  # The sights containers pick the newest file in the wikimedia folder automatically. Not part of `up`:
+  #   docker compose --profile wikimedia build wikimedia-build
+  #   docker compose --profile wikimedia run --rm wikimedia-build once          # one build now (resumable after a failure)
+  #   docker compose --profile wikimedia up -d wikimedia-build                  # every GEO_WIKIMEDIA_BUILD_DAYS days at GEO_WIKIMEDIA_BUILD_AT
+  wikimedia-build:
+    profiles: ["wikimedia"]
+    build:
+      context: ./wikimedia-build
+    image: wikimedia-build
+    container_name: wikimedia-build
+    restart: "no"
+    shm_size: "4gb"                    # PostgreSQL parallel queries need shared memory; Docker's default of 64 MB ends in "could not resize shared memory segment"
+    command: ["schedule"]
+    volumes:
+      - ${GEO_WIKIMEDIA_HOST_DIR:-./wikimedia}:/out                         # result: wikimedia_importance-YYYYMMDD.tsv.gz + wikimedia_importance.tsv.gz
+      - ${GEO_WIKIMEDIA_WORK_HOST_DIR:-./wikimedia-work}:/work              # downloads and CSVs (~60 GB)
+      - ${GEO_WIKIMEDIA_PGDATA_HOST_DIR:-./wikimedia-pgdata}:/pgdata        # PostgreSQL (~90 GB while building)
+    environment:
+      - PUID=${PUID:-1026}
+      - PGID=${PGID:-100}
+      - GEO_WIKIMEDIA_LANGUAGES=${GEO_WIKIMEDIA_LANGUAGES:-}
+      - GEO_WIKIMEDIA_BUILD_DAYS=${GEO_WIKIMEDIA_BUILD_DAYS:-30}
+      - GEO_WIKIMEDIA_BUILD_AT=${GEO_WIKIMEDIA_BUILD_AT:-03:00}
+      - GEO_WIKIMEDIA_KEEP=${GEO_WIKIMEDIA_KEEP:-2}
+      - GEO_WIKIMEDIA_KEEP_WORK=${GEO_WIKIMEDIA_KEEP_WORK:-0}
+
+  # Sights index builder: reads your Nominatim planet file READ-ONLY, writes /data/sights.sqlite (next to the cache).
+  # Not part of `up`; run it when you want to (re)build:
+  #   docker compose --profile import build sights-import
+  #   docker compose --profile import run --rm sights-import all       # build + Wikidata (resumable: run again to continue)
+  #   docker compose --profile import run --rm sights-import status
+  sights-import:
+    profiles: ["import"]
+    build:
+      context: .
+      dockerfile: Dockerfile.import
+    image: sights-import
+    container_name: sights-import
+    restart: "no"
+    user: "${PUID:-1026}:${PGID:-100}"      # must be able to write the data folder
+    volumes:
+      - ${GEO_DATA_HOST_DIR:-./data}:/data                  # sights.sqlite and the temporary work folder (a few GB while building)
+      - ${GEO_OSM_PBF_HOST_DIR:-./osm}:/osm:ro                  # folder with planet-latest.osm.pbf (mounted read-only)
+      - ${GEO_DOWNLOAD_HOST_DIR:-./downloads}:/downloads               # automatic updates: downloaded source files (kept: newest + last used)
+      - ${GEO_WIKIMEDIA_HOST_DIR:-./wikimedia}:/wikimedia:ro                 # folder with wikimedia-importance.sql.gz (read-only)
+    environment:
+      - GEO_SIGHTS_DB=${GEO_SIGHTS_DB:-}
+      - GEO_SIGHTS_WORK_DIR=${GEO_SIGHTS_WORK_DIR:-}
+      - GEO_OSM_PBF_FILE=${GEO_OSM_PBF_FILE:-/osm/planet-latest.osm.pbf}
+      - GEO_SIGHTS_OSMIUM_INDEX=${GEO_SIGHTS_OSMIUM_INDEX:-flex_mem}
+      - GEO_SIGHTS_WD_DELAY=${GEO_SIGHTS_WD_DELAY:-1.0}
+      - GEO_SIGHTS_WD_WORKERS=${GEO_SIGHTS_WD_WORKERS:-2}
+      - GEO_SIGHTS_WD_MAXLAG=${GEO_SIGHTS_WD_MAXLAG:-0}
+      - GEO_SIGHTS_WD_CONTACT=${GEO_SIGHTS_WD_CONTACT:-}
+      - GEO_WIKIMEDIA_IMPORTANCE_FILE=${GEO_WIKIMEDIA_IMPORTANCE_FILE:-/wikimedia/wikimedia-importance.sql.gz}
+      - AI_PROVIDER=${AI_PROVIDER:-ollama}
+      - OLLAMA_URL=${OLLAMA_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
+      - GOOGLE_AI_MODEL=${GOOGLE_AI_MODEL:-}
+      - OLLAMA_MODEL_TEXT=${OLLAMA_MODEL_TEXT:-}
+      - GOOGLE_AI_MODEL_TEXT=${GOOGLE_AI_MODEL_TEXT:-}
+      - GEO_SIGHTS_TR_SCOPE=${GEO_SIGHTS_TR_SCOPE:-notable}
+      - GEO_SIGHTS_TR_MAX=${GEO_SIGHTS_TR_MAX:-0}
+      - GEO_SIGHTS_TR_SLEEP=${GEO_SIGHTS_TR_SLEEP:-0}
+      - GEO_SIGHTS_TR_TIMEOUT=${GEO_SIGHTS_TR_TIMEOUT:-60}
+      - GEO_SIGHTS_TR_RETRY=${GEO_SIGHTS_TR_RETRY:-0}
+      - GEO_SIGHTS_TR_LEN_FACTOR=${GEO_SIGHTS_TR_LEN_FACTOR:-4}
+      - GEO_SIGHTS_TR_LEN_MIN=${GEO_SIGHTS_TR_LEN_MIN:-200}
+      - GEO_SIGHTS_TR_BATCH=${GEO_SIGHTS_TR_BATCH:-10}
+      - GEO_SIGHTS_TR_WORKERS=${GEO_SIGHTS_TR_WORKERS:-2}
+      - GEO_SIGHTS_TR_LOG=${GEO_SIGHTS_TR_LOG:-1}
+      - GEO_POI_SKIP=${GEO_POI_SKIP:-}
+      - GEO_SIGHTS_WP_SCOPE=${GEO_SIGHTS_WP_SCOPE:-notable}
+      - GEO_SIGHTS_WP_LANGS=${GEO_SIGHTS_WP_LANGS:-de,en}
+      - GEO_SIGHTS_WP_MAX=${GEO_SIGHTS_WP_MAX:-0}
+      - GEO_SIGHTS_WP_DELAY=${GEO_SIGHTS_WP_DELAY:-0.5}
+      - GEO_SIGHTS_WP_WORKERS=${GEO_SIGHTS_WP_WORKERS:-2}
+      - GEO_SIGHTS_WP_SENTENCES=${GEO_SIGHTS_WP_SENTENCES:-3}
+      - GEO_SIGHTS_WP_MAXCHARS=${GEO_SIGHTS_WP_MAXCHARS:-400}
+      - GEO_SIGHTS_REFRESH_DAYS=${GEO_SIGHTS_REFRESH_DAYS:-0}
+      - GEO_SIGHTS_REFRESH_AT=${GEO_SIGHTS_REFRESH_AT:-03:30}
+      - GEO_SIGHTS_IMPORTANCE_URL=${GEO_SIGHTS_IMPORTANCE_URL:-https://downloads.opencagedata.com/public/wikimedia_importance/%YYYYMM%/wikimedia_importance.tsv.gz,https://nominatim.org/data/wikimedia-importance.csv.gz}
+      - GEO_SIGHTS_PBF_URL=${GEO_SIGHTS_PBF_URL:-}
+      - GEO_SIGHTS_REFRESH_WIKITEXT=${GEO_SIGHTS_REFRESH_WIKITEXT:-1}
+      - GEO_SIGHTS_REFRESH_TRANSLATE=${GEO_SIGHTS_REFRESH_TRANSLATE:-1}
+      - GEO_SIGHTS_REFRESH_FORCE_BUILD=${GEO_SIGHTS_REFRESH_FORCE_BUILD:-0}
+      - GEO_SIGHTS_KEEP_PREV=${GEO_SIGHTS_KEEP_PREV:-1}
+    command: ["all"]
+
+  # Automatic refresh (GEO_SIGHTS_REFRESH_DAYS > 0): downloads, rebuild, Wikidata, importance, Wikipedia texts, translation -- see sightsrefresh.py
+  #   docker compose --profile import build sights-import      (once; the image is shared)
+  #   docker compose --profile refresh up -d sights-refresh
+  sights-refresh:
+    profiles: ["refresh"]
+    image: sights-import
+    container_name: sights-refresh
+    restart: unless-stopped
+    user: "${PUID:-1026}:${PGID:-100}"      # must be able to write the data folder
+    volumes:
+      - ${GEO_DATA_HOST_DIR:-./data}:/data                  # sights.sqlite and the temporary work folder (a few GB while building)
+      - ${GEO_OSM_PBF_HOST_DIR:-./osm}:/osm:ro                  # folder with planet-latest.osm.pbf (mounted read-only)
+      - ${GEO_DOWNLOAD_HOST_DIR:-./downloads}:/downloads               # automatic updates: downloaded source files (kept: newest + last used)
+      - ${GEO_WIKIMEDIA_HOST_DIR:-./wikimedia}:/wikimedia:ro                 # folder with wikimedia-importance.sql.gz (read-only)
+    environment:
+      - GEO_SIGHTS_DB=${GEO_SIGHTS_DB:-}
+      - GEO_SIGHTS_WORK_DIR=${GEO_SIGHTS_WORK_DIR:-}
+      - GEO_OSM_PBF_FILE=${GEO_OSM_PBF_FILE:-/osm/planet-latest.osm.pbf}
+      - GEO_SIGHTS_OSMIUM_INDEX=${GEO_SIGHTS_OSMIUM_INDEX:-flex_mem}
+      - GEO_SIGHTS_WD_DELAY=${GEO_SIGHTS_WD_DELAY:-1.0}
+      - GEO_SIGHTS_WD_WORKERS=${GEO_SIGHTS_WD_WORKERS:-2}
+      - GEO_SIGHTS_WD_MAXLAG=${GEO_SIGHTS_WD_MAXLAG:-0}
+      - GEO_SIGHTS_WD_CONTACT=${GEO_SIGHTS_WD_CONTACT:-}
+      - GEO_WIKIMEDIA_IMPORTANCE_FILE=${GEO_WIKIMEDIA_IMPORTANCE_FILE:-/wikimedia/wikimedia-importance.sql.gz}
+      - AI_PROVIDER=${AI_PROVIDER:-ollama}
+      - OLLAMA_URL=${OLLAMA_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
+      - GOOGLE_AI_MODEL=${GOOGLE_AI_MODEL:-}
+      - OLLAMA_MODEL_TEXT=${OLLAMA_MODEL_TEXT:-}
+      - GOOGLE_AI_MODEL_TEXT=${GOOGLE_AI_MODEL_TEXT:-}
+      - GEO_SIGHTS_TR_SCOPE=${GEO_SIGHTS_TR_SCOPE:-notable}
+      - GEO_SIGHTS_TR_MAX=${GEO_SIGHTS_TR_MAX:-0}
+      - GEO_SIGHTS_TR_SLEEP=${GEO_SIGHTS_TR_SLEEP:-0}
+      - GEO_SIGHTS_TR_TIMEOUT=${GEO_SIGHTS_TR_TIMEOUT:-60}
+      - GEO_SIGHTS_TR_RETRY=${GEO_SIGHTS_TR_RETRY:-0}
+      - GEO_SIGHTS_TR_LEN_FACTOR=${GEO_SIGHTS_TR_LEN_FACTOR:-4}
+      - GEO_SIGHTS_TR_LEN_MIN=${GEO_SIGHTS_TR_LEN_MIN:-200}
+      - GEO_SIGHTS_TR_BATCH=${GEO_SIGHTS_TR_BATCH:-10}
+      - GEO_SIGHTS_TR_WORKERS=${GEO_SIGHTS_TR_WORKERS:-2}
+      - GEO_SIGHTS_TR_LOG=${GEO_SIGHTS_TR_LOG:-1}
+      - GEO_POI_SKIP=${GEO_POI_SKIP:-}
+      - GEO_SIGHTS_WP_SCOPE=${GEO_SIGHTS_WP_SCOPE:-notable}
+      - GEO_SIGHTS_WP_LANGS=${GEO_SIGHTS_WP_LANGS:-de,en}
+      - GEO_SIGHTS_WP_MAX=${GEO_SIGHTS_WP_MAX:-0}
+      - GEO_SIGHTS_WP_DELAY=${GEO_SIGHTS_WP_DELAY:-0.5}
+      - GEO_SIGHTS_WP_WORKERS=${GEO_SIGHTS_WP_WORKERS:-2}
+      - GEO_SIGHTS_WP_SENTENCES=${GEO_SIGHTS_WP_SENTENCES:-3}
+      - GEO_SIGHTS_WP_MAXCHARS=${GEO_SIGHTS_WP_MAXCHARS:-400}
+      - GEO_SIGHTS_REFRESH_DAYS=${GEO_SIGHTS_REFRESH_DAYS:-0}
+      - GEO_SIGHTS_REFRESH_AT=${GEO_SIGHTS_REFRESH_AT:-03:30}
+      - GEO_SIGHTS_IMPORTANCE_URL=${GEO_SIGHTS_IMPORTANCE_URL:-https://downloads.opencagedata.com/public/wikimedia_importance/%YYYYMM%/wikimedia_importance.tsv.gz,https://nominatim.org/data/wikimedia-importance.csv.gz}
+      - GEO_SIGHTS_PBF_URL=${GEO_SIGHTS_PBF_URL:-}
+      - GEO_SIGHTS_REFRESH_WIKITEXT=${GEO_SIGHTS_REFRESH_WIKITEXT:-1}
+      - GEO_SIGHTS_REFRESH_TRANSLATE=${GEO_SIGHTS_REFRESH_TRANSLATE:-1}
+      - GEO_SIGHTS_REFRESH_FORCE_BUILD=${GEO_SIGHTS_REFRESH_FORCE_BUILD:-0}
+      - GEO_SIGHTS_KEEP_PREV=${GEO_SIGHTS_KEEP_PREV:-1}
+    command: ["schedule"]

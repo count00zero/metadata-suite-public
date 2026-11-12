@@ -1,0 +1,24 @@
+<h2>Ergebnis</h2>
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }}</p>
+{% endif %}
+{% if results|length == 0 and not error %}
+<p class="muted">Keine Videos ausgewählt.</p>
+{% elif results %}
+{# See timestamp_tool's _results.html for why this OOB swap exists. #}
+<button type="button" class="btn-primary btn-execute" id="exec-btn" disabled hx-swap-oob="true"
+        title="Bereits ausgeführt -- „Scannen" erneut klicken, um diese Videos erneut zu verarbeiten.">
+  ✓ Ausgeführt
+</button>
+{% set created = results | selectattr("nfo_written") | list | length %}
+{% set skipped = results | selectattr("skipped") | list | length %}
+{% set failed = results | selectattr("error") | list | length %}
+<p class="hint">{{ created }} erstellt, {{ skipped }} übersprungen, {{ failed }} fehlgeschlagen.</p>
+<div class="rows">
+  {% for r in results %}
+  {% with r = r %}{% include "_result_row.html" %}{% endwith %}
+  {% endfor %}
+</div>
+{% endif %}

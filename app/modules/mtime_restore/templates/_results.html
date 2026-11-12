@@ -1,0 +1,26 @@
+<h2>Ergebnis</h2>
+{% if results|length == 0 %}
+<p class="muted">Keine Dateien ausgewählt.</p>
+{% else %}
+{# See timestamp_tool's _results.html for why this OOB swap exists. #}
+<button type="button" class="btn-primary btn-execute" id="exec-btn" disabled hx-swap-oob="true"
+        title="Bereits ausgeführt -- „Vorschau laden" erneut klicken, um diese Dateien erneut zu verarbeiten.">
+  ✓ Ausgeführt
+</button>
+<div class="rows">
+  {% for r in results %}
+  <div class="result-row {% if r.error %}result-error{% elif r.changed or r.rotated %}result-ok{% endif %}">
+    <div class="orig" title="{{ r.path }}">{{ r.path.split('/')[-1] }}</div>
+    {% if r.rotation %}
+    <div class="{{ 'ok-line' if r.rotated else 'meta-label' }}">↻ {{ r.rotation }}</div>
+    {% endif %}
+    {% if r.changed %}
+    <div class="ok-line">✓ Zeitstempel korrigiert auf {{ r.restored_to }} (Quelle: {{ r.source }})</div>
+    {% endif %}
+    {% if r.error %}
+    <div class="error-line">⚠ {{ r.error }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

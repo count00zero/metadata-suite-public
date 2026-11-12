@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Info — Metadata Suite</title>
+<script defer src="/static/htmx.min.js"></script>
+<script src="/static/safe-observer.js"></script>
+<script defer src="/static/alpine.min.js"></script>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/favicon-192.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>ⓘ Info</h1>
+  <nav class="modules-nav">
+    <a class="module-pill info-pill" href="/" title="Start (Dashboard)" aria-label="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></svg></a>
+    <a class="module-pill" href="/timestamp/">Timestamp</a>
+    <a class="module-pill" href="/gps/">GPS Sidecar</a>
+    <a class="module-pill" href="/gpsfill/">GPS füllen</a>
+    <a class="module-pill" href="/geooverrides/">Geo-Overrides</a>
+    <a class="module-pill" href="/ctxfill/">Kontext nachfüllen</a>
+    <a class="module-pill" href="/ai/">AI-Beschreibung</a>
+    <a class="module-pill" href="/nfo/">NFO Maker</a>
+    <a class="module-pill" href="/collage/">Collage</a>
+    <a class="module-pill" href="/mtime/">Datei-Zeitstempel</a>
+    <a class="module-pill" href="/shortvideos/">Kurzvideos löschen</a>
+    <a class="module-pill" href="/year/">Jahreslauf</a>
+    <a class="module-pill info-pill" href="/endpoints/" title="Endpunkte des geo-service (Links mit deinen Beispielorten)" aria-label="Endpunkte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></a>
+    <a class="module-pill info-pill" href="/docs/" title="Dokumentation (README)" aria-label="Dokumentation"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 7.5h6"/><path d="M9.5 11h6"/></svg></a>
+    <span class="module-pill info-pill active" title="Info" aria-label="Info"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></span>
+  </nav>
+</header>
+
+{% set b = d.build %}
+<main class="info-page" x-data="{ q: '', onlySet: false, copied: false,
+    vis(el) { const t = (el.dataset.text || '').toLowerCase(); return (!this.q || t.includes(this.q.toLowerCase())) && (!this.onlySet || el.dataset.set !== '0'); },
+    async copy() { const r = await fetch('/info/report.txt'); await navigator.clipboard.writeText(await r.text()); this.copied = true; setTimeout(() => this.copied = false, 2000); } }">
+
+  {# ---- hero: build identity ---- #}
+  <section class="panel info-hero">
+    <div class="info-hero-main">
+      <div class="info-title">Metadata Suite
+        {% if b.version %}<span class="info-badge accent">v{{ b.version }}</span>{% endif %}
+      </div>
+      <div class="info-sub">
+        {% if b.build_date %}Build <strong>{{ b.build_date }}</strong>{% if b.build_age %} <span class="muted">({{ b.build_age }})</span>{% endif %}
+        {% else %}<span class="muted">Build-Datum unbekannt (nicht per Docker gebaut oder ohne Build-Args)</span>{% endif %}
+        {% if b.git_commit %} · Commit <code>{{ b.git_commit[:10] }}</code>{% if b.git_branch %} <span class="muted">({{ b.git_branch }})</span>{% endif %}{% endif %}
+        {% if b.git_message %}<div class="muted" style="margin-top:.25em">Letzter Commit: <em>{{ b.git_message }}</em></div>{% endif %}
+      </div>
+    </div>
+    <div class="info-chips">
+      {% for t in d.tools %}
+      <span class="info-chip {{ t.status }}" title="{{ t.note or t.path }}"><span class="dot {{ t.status }}"></span>{{ t.name.split(' ')[0] }} <b>{{ t.version }}</b></span>
+      {% endfor %}
+    </div>
+    <dl class="info-facts">
+      <div><dt>Gestartet</dt><dd>{{ b.started }}</dd></div>
+      <div><dt>Laufzeit</dt><dd>{{ b.uptime }}</dd></div>
+      <div><dt>Host</dt><dd>{{ b.hostname }}{% if b.in_docker %} <span class="muted">(Docker)</span>{% endif %}</dd></div>
+      <div><dt>System</dt><dd>{{ b.platform }}</dd></div>
+      <div><dt>Python</dt><dd>{{ b.python }}</dd></div>
+      <div><dt>Container-Zeitzone</dt><dd>{{ b.container_tz }}</dd></div>
+      <div><dt>mtime-Zeitzone</dt><dd>{{ b.mtime_tz }}</dd></div>
+      <div><dt>Jetzt</dt><dd>{{ b.now }}</dd></div>
+    </dl>
+  </section>
+
+  {# ---- toolbar ---- #}
+  <div class="info-toolbar">
+    <input type="search" x-model="q" placeholder="Filtern: Variable, Pfad, Version …" autocomplete="off" aria-label="Filter">
+    <label class="checkbox-field"><input type="checkbox" x-model="onlySet"> nur gesetzte Werte</label>
+    <span class="spacer"></span>
+    <button type="button" class="btn-ghost" @click="copy()"><span x-text="copied ? '✓ kopiert' : '📋 Report kopieren'">📋 Report kopieren</span></button>
+    <a class="btn-ghost" href="/info/data.json" target="_blank" rel="noopener">{ } JSON</a>
+  </div>
+
+  {# ---- versions ---- #}
+  <section class="panel">
+    <h2 class="info-h">🧰 Versionen</h2>
+    <div class="info-cols">
+      <div>
+        <h3 class="info-h3">Programme</h3>
+        <div class="info-table">
+          {% for t in d.tools %}
+          <div class="info-row" data-set="1" data-text="{{ t.name }} {{ t.version }} {{ t.path }}" x-show="vis($el)">
+            <span class="dot {{ t.status }}"></span>
+            <span class="info-k">{{ t.name }}</span>
+            <span class="info-v mono"><b>{{ t.version }}</b></span>
+            <span class="info-note">{{ t.note }}{% if t.path %} <span class="muted mono">{{ t.path }}</span>{% endif %}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <h3 class="info-h3">Python-Pakete &amp; Frontend-Bibliotheken</h3>
+        <div class="info-table info-pkgs">
+          {% for p in d.packages %}
+          <div class="info-row" data-set="1" data-text="{{ p.name }} {{ p.version }}" x-show="vis($el)">
+            <span class="dot {{ p.status }}"></span>
+            <span class="info-k">{{ p.name }}</span>
+            <span class="info-v mono"><b>{{ p.version }}</b></span>
+            <span class="info-note">{% if p.pinned and p.pinned != p.version %}requirements.txt: {{ p.pinned }}{% endif %}</span>
+          </div>
+          {% endfor %}
+          {% for f in d.frontend %}
+          <div class="info-row" data-set="1" data-text="{{ f.name }} {{ f.version }}" x-show="vis($el)">
+            <span class="dot ok"></span>
+            <span class="info-k">{{ f.name }}</span>
+            <span class="info-v mono"><b>{{ f.version }}</b></span>
+            <span class="info-note">{{ f.note }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ---- paths ---- #}
+  <section class="panel">
+    <h2 class="info-h">📂 Pfade &amp; Konfigurationsdateien</h2>
+    <div class="info-table">
+      {% for p in d.paths %}
+      <div class="info-row" data-set="{{ '1' if p.path else '0' }}" data-text="{{ p.label }} {{ p.path }} {{ p.note }}" x-show="vis($el)">
+        <span class="dot {{ 'ok' if p.exists else ('muted' if not p.path else 'warn') }}"></span>
+        <span class="info-k">{{ p.label }}</span>
+        <span class="info-v mono">{{ p.path or '—' }}</span>
+        <span class="info-note">
+          {% if p.path %}
+            {% if p.exists %}
+              <span class="info-badge ok">vorhanden</span>
+              <span class="info-badge">{{ 'lesbar' if p.readable else 'nicht lesbar' }}</span>
+              <span class="info-badge {{ '' if p.writable else 'warn' }}">{{ 'schreibbar' if p.writable else 'schreibgeschützt' }}</span>
+              {% if p.size %}<span class="muted">{{ p.size }}</span>{% endif %}
+              {% if p.mtime %}<span class="muted">· {{ p.mtime }}</span>{% endif %}
+            {% else %}<span class="info-badge warn">nicht vorhanden</span>{% endif %}
+          {% endif %}
+          <span class="muted">{{ p.note }}</span>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    <h3 class="info-h3">Basis-Ordner (Dropdown)</h3>
+    <div class="info-table">
+      {% for r in d.root_folders %}
+      <div class="info-row" data-set="1" data-text="{{ r.name }} {{ r.path }}" x-show="vis($el)">
+        <span class="dot {{ 'ok' if r.exists else 'bad' }}"></span>
+        <span class="info-k">{{ r.name }}</span>
+        <span class="info-v mono">{{ r.path }}</span>
+        <span class="info-note"><span class="info-badge">{{ r.type }}</span>
+          {% if not r.exists %}<span class="info-badge bad">Ordner nicht gefunden</span>{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ---- services ---- #}
+  <section class="panel">
+    <h2 class="info-h">🔌 Externe Dienste
+      <button type="button" class="btn-ghost info-inline-btn" hx-get="/info/services" hx-target="#svc" hx-indicator="#svc-spin">Erreichbarkeit prüfen</button>
+      <span id="svc-spin" class="htmx-indicator spinner">prüfe…</span>
+    </h2>
+    <div id="svc">
+      {% if d.services %}
+      <div class="info-table">
+        {% for s in d.services %}
+        <div class="info-row" data-set="1" data-text="{{ s.name }} {{ s.url }}" x-show="vis($el)">
+          <span class="dot muted"></span><span class="info-k">{{ s.name }}</span><span class="info-v mono">{{ s.url }}</span>
+          <span class="info-note muted">noch nicht geprüft</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}<p class="muted">Keine externen Dienste konfiguriert.</p>{% endif %}
+    </div>
+  </section>
+
+  {# ---- sights index ---- #}
+  <section class="panel">
+    <h2 class="info-h">🗺 Sehenswürdigkeiten-Index
+      <span id="sights-spin" class="htmx-indicator spinner">lädt…</span></h2>
+    <div id="sights" hx-get="/info/sights" hx-trigger="load" hx-indicator="#sights-spin"><p class="muted">lädt …</p></div>
+  </section>
+
+  {# ---- environment ---- #}
+  <section class="panel">
+    <h2 class="info-h">⚙️ Umgebungsvariablen
+      <span class="muted info-h-note">Secrets (Token, API-Keys) werden nie angezeigt</span></h2>
+    {% for g in d.env_groups %}
+    <details class="info-group" {% if g.n_set %}open{% endif %}>
+      <summary><span>{{ g.icon }} {{ g.title }}</span>
+        <span class="info-badge {{ 'ok' if g.n_set else '' }}">{{ g.n_set }} / {{ g.rows|length }} gesetzt</span></summary>
+      <div class="info-table">
+        {% for r in g.rows %}
+        <div class="info-row env" data-set="{{ '1' if r.state == 'set' else '0' }}" data-text="{{ r.name }} {{ r.value }} {{ r.help }}" x-show="vis($el)">
+          <span class="dot {{ 'ok' if r.state == 'set' else ('warn' if r.state == 'empty' else 'muted') }}"></span>
+          <span class="info-k mono">{{ r.name }}</span>
+          <span class="info-v mono">
+            {% if r.state == 'set' %}{{ r.value }}
+            {% elif r.effective %}{{ r.effective }} <span class="muted">(automatisch)</span>
+            {% elif r.state == 'empty' %}<span class="muted">(leer)</span>
+            {% else %}<span class="muted">nicht gesetzt{% if r.default %} → Standard: {{ r.default }}{% endif %}</span>{% endif %}
+          </span>
+          <span class="info-note muted">{{ r.help }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endfor %}
+    {% if d.other_env %}
+    <details class="info-group" open>
+      <summary><span>❓ Unbekannte Variablen mit App-Präfix</span><span class="info-badge warn">{{ d.other_env|length }}</span></summary>
+      <div class="info-table">
+        {% for r in d.other_env %}
+        <div class="info-row env" data-set="1" data-text="{{ r.name }} {{ r.value }}" x-show="vis($el)">
+          <span class="dot warn"></span><span class="info-k mono">{{ r.name }}</span><span class="info-v mono">{{ r.value }}</span>
+          <span class="info-note muted">wird von der App nicht gelesen – Tippfehler?</span>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,95 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }} „Vorschau laden“ erneut klicken, um neu zu beginnen.</p>
+{% else %}
+{% set fills = rows | selectattr("status", "equalto", "fill") | list %}
+{% set others = rows | rejectattr("status", "equalto", "fill") | list %}
+<form id="apply-form">
+  <input type="hidden" name="token" value="{{ token }}">
+  {% include "_stepbar.html" %}
+
+  <div class="list-toolbar">
+    <span><strong>{{ fills|length }}</strong> Datei(en) können gefüllt werden</span>
+    <span class="meta-label">Track: {{ points }} Punkte{% if windows %} ({{ windows }} Abruf{{ 'e' if windows != 1 else '' }}){% endif %}</span>
+    <span class="meta-label">Mindest-Konfidenz {{ min_conf }}</span>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('#apply-form .row-checkbox').forEach(c=>c.checked=true)">Alle auswählen</button>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('#apply-form .row-checkbox').forEach(c=>c.checked=false)">Keine</button>
+  </div>
+
+  <p class="hint">
+    {% for k, label in [("fill","zu füllen"),("low-confidence","Konfidenz zu niedrig"),("no-track-point","kein Track-Punkt in Reichweite"),("no-time","keine Aufnahmezeit"),("has-gps","haben schon GPS"),("sidecar-has-gps","Sidecar hat schon GPS"),("marked-no-gps","als „kein GPS“ markiert")] %}
+      {% if counts.get(k) %}<span class="chip">{{ counts[k] }} {{ label }}</span> {% endif %}
+    {% endfor %}
+    {% if drifted_n %}· bei {{ drifted_n }} wurde eine Uhr-Abweichung korrigiert{% endif %}
+  </p>
+
+  {% if assumed_n %}
+  <p class="warn-note">⚠ {{ assumed_n }} Datei(en) ohne Zeitzonen-Angabe: es wird {{ assumed_tz }} angenommen – bei Reisen ins Ausland prüfen (in der Liste mit „tz?“ markiert).</p>
+  {% endif %}
+
+  {% if drift_table %}
+  <details class="drift-box" open>
+    <summary>Kamera-Uhr (Abweichung = Kamera minus echte Zeit)</summary>
+    <table class="drift-table">
+      <tr><th>Kamera</th><th>Proben</th><th>Satellit</th><th>Track</th><th>Median</th><th>Streuung</th><th>nutzbar</th></tr>
+      {% for d in drift_table %}
+      <tr><td>{{ d.camera }}</td><td>{{ d.samples }}</td><td>{{ d.gps_time }}</td><td>{{ d.track_match }}</td>
+          <td>{{ d.median_display }}</td><td>{{ d.mad_s }} s</td><td>{{ "ja" if d.stable else "nein (zu wenige / uneinheitlich)" }}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  {% elif drift_mode == "auto" %}
+  <p class="muted">Uhr-Abweichung: keine Referenzdateien mit GPS für diese Kameras – es wird angenommen, dass die Uhren stimmen.</p>
+  {% endif %}
+
+  {% if not rows %}
+  <p class="muted">Nichts zu tun: {{ scanned_count }} Datei(en) geprüft, alle haben schon GPS oder sind markiert.</p>
+  {% endif %}
+
+  <div class="rows">
+    {% for r in fills %}
+    <label class="row">
+      <input type="checkbox" class="row-checkbox" name="selected" value="{{ r.path }}" checked>
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+          <span class="conf conf-{{ r.conf_class }}" title="Konfidenz (Heuristik, keine Wahrscheinlichkeit)">{{ r.confidence }}</span>
+          <span class="meta-label">± {{ r.uncertainty_m }} m</span>
+        </div>
+        {% if r.rel_dir %}<div class="subdir-badge">📁 {{ r.rel_dir }}</div>{% endif %}
+        <div class="meta-row">
+          <span class="meta-label">📍 {{ "%.5f"|format(r.lat) }}, {{ "%.5f"|format(r.lon) }}{% if r.place %} · {{ r.place }}{% endif %}</span>
+          <span class="meta-label">{% if r.method == "neighbor" %}Nachbardatei {{ r.neighbor }}, {{ (r.gap_s // 60) }} min entfernt{% else %}{{ "interpoliert" if r.method == "interpolated" else "exakt" if r.method == "exact" else "nächster Punkt" }}, Lücke {{ r.gap_s }} s{% endif %}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">{{ r.camera }} · Zeit: {{ r.basis }}{% if r.assumed %} <strong>tz?</strong>{% endif %}</span>
+          {% if r.drift_display %}<span class="meta-label">Uhr {{ r.drift_display }} ({{ r.drift_method }})</span>{% endif %}
+        </div>
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  {% if others %}
+  <details class="drift-box">
+    <summary>{{ others|length }} Datei(en) werden nicht gefüllt</summary>
+    <ul class="skip-list">
+      {% for r in others %}<li><span title="{{ r.path }}">{{ r.filename }}</span> — {{ r.reason }}{% if r.assumed %} (tz?){% endif %}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  {% if fills %}
+  <div class="actions-row sticky-bottom">
+    <label class="opt"><input type="checkbox" name="mark_nogps" value="1"> Dateien ohne Track-Punkt als „kein GPS gefunden“ markieren</label>
+    <button type="button" class="btn-primary"
+            hx-post="/gpsfill/apply" hx-include="closest form" hx-target="#results-panel" hx-indicator="#apply-spinner">
+      📍 GPS in Sidecars schreiben
+    </button>
+    <span id="apply-spinner" class="htmx-indicator spinner">schreibt…</span>
+  </div>
+  {% endif %}
+</form>
+{% endif %}

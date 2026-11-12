@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metadata Suite</title>
+<script defer src="/static/htmx.min.js"></script>
+<script src="/static/safe-observer.js"></script>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/favicon-192.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .home { max-width: 1100px; margin: 0 auto; padding: 8px 24px 40px; }
+  .home h2 { margin: 26px 0 10px; font-size: 1.05em; color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+  .tile { position: relative; display: block; text-decoration: none; color: inherit; background: var(--panel); border: 1px solid var(--border);
+          border-radius: 12px; padding: 16px 18px 16px; transition: border-color .15s, transform .15s; }
+  .tile:hover, .tile:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
+  .tile .ic { font-size: 1.7em; line-height: 1; }
+  .tile h3 { margin: 10px 0 6px; font-size: 1.05em; }
+  .tile p { margin: 0; color: var(--muted); font-size: .9em; line-height: 1.4; }
+  .tile .step { position: absolute; top: 12px; right: 14px; min-width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 11px;
+                background: rgba(79,140,255,.16); color: var(--accent); font-size: .8em; font-weight: 700; }
+  .flow { color: var(--muted); font-size: .9em; margin: 4px 0 0; }
+  .status { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .st-card { background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 10px; padding: 12px 14px;
+             display: flex; flex-direction: column; gap: 4px; font-size: .9em; }
+  .st-card strong { font-size: .95em; }
+  .st-card span, .st-card code { color: var(--muted); }
+  .st-ok { border-left-color: var(--ok); } .st-bad { border-left-color: var(--error); } .st-off { border-left-color: var(--warn); }
+  .home .build { color: var(--muted); font-size: .85em; margin-top: 28px; }
+  @media (max-width: 600px) { .home { padding: 8px 16px 32px; } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>🗂️ Metadata Suite</h1>
+  <nav class="modules-nav">
+    <span class="module-pill info-pill active" title="Start" aria-label="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></svg></span>
+    <a class="module-pill" href="/timestamp/">Timestamp</a>
+    <a class="module-pill" href="/gps/">GPS Sidecar</a>
+    <a class="module-pill" href="/gpsfill/">GPS füllen</a>
+    <a class="module-pill" href="/geooverrides/">Geo-Overrides</a>
+    <a class="module-pill" href="/ctxfill/">Kontext nachfüllen</a>
+    <a class="module-pill" href="/ai/">AI-Beschreibung</a>
+    <a class="module-pill" href="/nfo/">NFO Maker</a>
+    <a class="module-pill" href="/collage/">Collage</a>
+    <a class="module-pill" href="/mtime/">Datei-Zeitstempel</a>
+    <a class="module-pill" href="/shortvideos/">Kurzvideos löschen</a>
+    <a class="module-pill" href="/year/">Jahreslauf</a>
+    <a class="module-pill info-pill" href="/endpoints/" title="Endpunkte des geo-service (Links mit deinen Beispielorten)" aria-label="Endpunkte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></a>
+    <a class="module-pill info-pill" href="/docs/" title="Dokumentation (README)" aria-label="Dokumentation"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 7.5h6"/><path d="M9.5 11h6"/></svg></a>
+    <a class="module-pill info-pill" href="/info/" title="Info: Versionen, Umgebung, Pfade" aria-label="Info"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></a>
+  </nav>
+</header>
+
+<main class="home">
+  <h2>Status</h2>
+  <div class="status" id="status" hx-get="/home/status" hx-trigger="load, every 60s" hx-swap="innerHTML">
+    <div class="st-card"><strong>geo-service</strong><span>prüfe …</span></div>
+  </div>
+
+  <h2>Module</h2>
+  <p class="flow">Üblicher Ablauf (Zahlen an den Kacheln): Zeitstempel → Position → fehlende Positionen füllen → Kontext → Beschreibung → NFO → Collage → Datei-Zeitstempel (wie der Jahreslauf).</p>
+  <div class="tiles" style="margin-top:12px">
+    {% for href, icon, title, text, step in tiles %}
+    <a class="tile" href="{{ href }}">
+      {% if step %}<span class="step" title="Schritt {{ step }} im üblichen Ablauf">{{ step }}</span>{% endif %}
+      <div class="ic" aria-hidden="true">{{ icon }}</div>
+      <h3>{{ title }}</h3>
+      <p>{{ text }}</p>
+    </a>
+    {% endfor %}
+  </div>
+
+  <h2>Basis-Ordner</h2>
+  <p>{% for rf in roots %}<span class="chip" title="{{ rf.path }}">{{ rf.name }}{% if rf.type_filter != 'ALL' %} · {{ 'nur Videos' if rf.type_filter == 'VIDEO' else 'nur Fotos' }}{% endif %}</span>{% endfor %}</p>
+
+  <p class="build">Version {{ build.version or 'unbekannt' }}{% if build.build_date %} · gebaut {{ build.build_date }}{% if build.build_age %} ({{ build.build_age }}){% endif %}{% endif %} · läuft seit {{ build.uptime }}</p>
+</main>
+</body>
+</html>

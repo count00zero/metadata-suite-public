@@ -1,0 +1,75 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }} „Vorschau laden" erneut klicken, um von vorn zu beginnen.</p>
+{% else %}
+<form id="execute-form" hx-post="/mtime/execute" hx-target="#results-panel" hx-indicator="#exec-spinner">
+  <input type="hidden" name="all_rows" value='{{ all_rows_json }}'>
+
+  {% include "_stepbar.html" %}
+  <div class="list-toolbar">
+    <span>{{ rows|length }} Datei(en) mit abweichendem/nicht auflösbarem Zeitstempel{% if rotate_count %} oder Drehbedarf{% endif %}</span>
+    {% if rotate_count %}<span>↻ {{ rotate_count }} JPEG(s) zu drehen</span>{% endif %}
+    {% if rotate_other %}<span class="muted" title="HEIC/PNG/WebP/TIFF/RAW werden nie verlustfrei gedreht">{{ rotate_other }} Nicht-JPEG mit Drehung ignoriert</span>{% endif %}
+    {% if already_correct_count %}<span>{{ already_correct_count }} bereits korrekt übersprungen</span>{% endif %}
+    {% if unresolved_count %}<span>{{ unresolved_count }} ohne auflösbares Datum</span>{% endif %}
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox:not(:disabled)').forEach(c=>c.checked=true)">Alle auswählen</button>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=false)">Keine</button>
+  </div>
+
+  {% if rows|length == 0 %}
+    {% if already_correct_count %}
+    <p class="muted">Alle {{ already_correct_count }} gefundenen Datei(en) haben bereits den korrekten
+      Zeitstempel. Nichts zu tun.</p>
+    {% else %}
+    <p class="muted">Keine passenden Dateien gefunden.</p>
+    {% endif %}
+  {% endif %}
+
+  <div class="rows">
+    {% for r in rows %}
+    <label class="row {% if r.unresolved %}row-warn{% endif %}">
+      <input type="checkbox" class="row-checkbox" name="selected" value="{{ r.path }}"
+             {% if r.unresolved %}disabled{% else %}checked{% endif %}>
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+        </div>
+        {% if r.rotate %}
+        <div class="meta-row rotate-row">
+          <label class="opt"><input type="checkbox" name="rotate" value="{{ r.path }}" checked> ↻ verlustfrei aufrecht drehen</label>
+          <span class="meta-label">(EXIF-Orientation {{ r.rotate.orientation }}: Bild ist {{ r.rotate.label }} gespeichert)</span>
+        </div>
+        {% endif %}
+        {% if r.date_unresolved %}
+        <div class="meta-label">Zeitstempel: kein auflösbares Datum -- bleibt unverändert.</div>
+        {% elif r.unresolved %}
+        <div class="warn">⚠ Weder Dateiname-Muster noch EXIF/QuickTime liefern ein Datum -- kann nicht
+          korrigiert werden.{% if r.current_mtime is none %} (Datei nicht lesbar){% endif %}</div>
+        {% elif r.differs %}
+        <div class="meta-row">
+          <span class="meta-label">Aktuell:</span>
+          <span class="geo-coords">{{ r.current_mtime }}</span>
+          <span class="meta-label">&rarr; Ziel:</span>
+          <span class="geo-coords">{{ r.target }}</span>
+          <span class="meta-label">(Quelle: {{ r.source }})</span>
+        </div>
+        {% endif %}
+        {% if r.rel_dir %}<div class="subdir-badge">📁 {{ r.rel_dir }}</div>{% endif %}
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  {% if rows|length > 0 %}
+  <div class="actions-row sticky-bottom">
+    {% if rotate_count %}
+    <label class="opt" title="Legt vor dem Drehen eine Kopie 'datei.jpg~' neben dem Original an."><input type="checkbox" name="rotate_backup" value="1"> Backup vor dem Drehen (<code>datei.jpg~</code>){% if not exiftran_ok %} <strong class="warn">exiftran fehlt!</strong>{% endif %}</label>
+    {% endif %}
+    <button type="submit" class="btn-primary btn-execute" id="exec-btn">{% if rotate_count %}Ausführen (Zeitstempel / Drehen){% else %}Zeitstempel korrigieren{% endif %}</button>
+    <span id="exec-spinner" class="htmx-indicator spinner">wird angewendet…</span>
+  </div>
+  {% endif %}
+</form>
+{% endif %}

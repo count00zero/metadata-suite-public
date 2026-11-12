@@ -1,0 +1,33 @@
+# Dependabot: opens a pull request for every new version of a pinned dependency (the pins in requirements*.txt and the
+# base images never move on their own). Security updates arrive immediately in addition to this schedule once
+# "Dependabot security updates" is on (repo Settings -> Code security).
+# NOT covered: ffmpeg / mediainfo / exiftool -- they are built from source via ARG in the Dockerfile (see its header).
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule: {interval: "weekly", day: "monday"}
+    groups:
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "pip"
+    directory: "/geo-service"
+    schedule: {interval: "weekly", day: "monday"}
+    groups:
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule: {interval: "weekly", day: "monday"}
+    ignore:      # the toolchain (PYTHON_BIN=python3.13) and tests/test_dockerfile_pins.py expect 3.13: only patch-level base image rebuilds
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+  - package-ecosystem: "docker"
+    directory: "/geo-service"
+    schedule: {interval: "weekly", day: "monday"}
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: {interval: "monthly"}

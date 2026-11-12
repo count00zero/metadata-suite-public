@@ -1,0 +1,56 @@
+<h2>Ergebnis</h2>
+{% if results|length == 0 %}
+<p class="muted">Keine Dateien ausgewählt.</p>
+{% else %}
+{# See timestamp_tool's _results.html for why this OOB swap exists. #}
+<button type="button" class="btn-primary btn-execute" id="exec-btn" disabled hx-swap-oob="true"
+        title="Bereits ausgeführt -- „Vorschau laden"/„Geocoding starten" erneut klicken, um diese Dateien erneut zu verarbeiten.">
+  ✓ Ausgeführt
+</button>
+{% if cancelled_info %}<p class="hint cancelled-info">⏹ {{ cancelled_info }}</p>{% endif %}
+<div class="rows">
+  {% for r in results %}
+  <div class="result-row {% if r.xmp_error or r.image_error %}result-error{% else %}result-ok{% endif %}">
+    <div class="orig" title="{{ r.path }}">{{ r.path.split('/')[-1] }}</div>
+    {% if r.xmp_written %}<div class="ok-line">✓ XMP-Sidecar geschrieben</div>{% endif %}
+    {% if r.camera_name %}<div class="ok-line">✓ Kamera: {{ r.camera_name }} <span class="meta-label">({{ r.camera_source_label }}{% if r.camera_raw and r.camera_raw != r.camera_name %}, Rohwert: {{ r.camera_raw }}{% endif %})</span></div>{% endif %}
+    {% if r.camera_hint %}<div class="warn">⚠ {{ r.camera_hint }}</div>{% endif %}
+    {% if r.image_written %}<div class="ok-line">✓ direkt in Datei eingebettet</div>{% endif %}
+    {% if r.srt_deleted %}<div class="ok-line">✓ DJI-.srt gelöscht</div>{% endif %}
+    {% if r.lrf_deleted %}<div class="ok-line">✓ DJI-.lrf gelöscht</div>{% endif %}
+    {% if r.xmp_error %}<div class="error-line">⚠ XMP: {{ r.xmp_error }}</div>{% endif %}
+    {% if r.image_error %}<div class="error-line">⚠ Datei: {{ r.image_error }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if written_paths %}
+  {% if auto_mtime_results is not none %}
+  <p class="hint">🕒 <code>RESTORE_TIMESTAMP=true</code>: Zeitstempel automatisch geprüft/wiederhergestellt.</p>
+  {% with results = auto_mtime_results %}{% include "_mtime_results.html" %}{% endwith %}
+  {% else %}
+  <form hx-post="/gps/restore-mtime/start" hx-target="#mtime-results" hx-swap="innerHTML" hx-indicator="#mtime-spinner">
+    {% for p in written_paths %}
+    <input type="hidden" name="paths" value="{{ p }}">
+    {% endfor %}
+    <div class="actions-row">
+      <button type="submit" class="btn-ghost">🕒 Datei-Zeitstempel wiederherstellen</button>
+      <span id="mtime-spinner" class="htmx-indicator spinner">wird gesetzt…</span>
+    </div>
+  </form>
+  <div id="mtime-results"></div>
+  {% endif %}
+{% endif %}
+
+<div class="actions-row">
+  {% if handoff_id %}
+  <a class="btn-ghost" href="/ctxfill/?handoff_id={{ handoff_id }}">
+    Weiter zu Kontext nachfüllen →
+  </a>
+  {% else %}
+  <a class="btn-ghost" href="/ctxfill/?path={{ handoff_path | urlencode }}&root_path={{ handoff_root_path | urlencode }}">
+    Weiter zu Kontext nachfüllen →
+  </a>
+  {% endif %}
+</div>
+{% endif %}

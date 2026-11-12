@@ -1,0 +1,28 @@
+{# Shared "stepped loading" bar (core/stepper.py). Needs: step (dict from Step.to_dict()) and step_url
+   (the module's browse/scan start endpoint). Shown only when the candidate list was split into steps. #}
+{% if step and step.active %}
+<div class="step-bar">
+  <div class="step-info">
+    <strong>Schritt {{ step.index }}</strong>
+    <span>Dateien {{ step.first }}–{{ step.last }} von {{ step.total }}</span>
+    <div class="step-track" title="{{ step.pct }} % der gefundenen Dateien geladen"><div class="step-fill" style="width: {{ step.pct }}%"></div></div>
+  </div>
+  {% if step.has_more %}
+  <button type="button" class="btn-primary step-next" hx-post="{{ step_url }}" hx-target="#file-list"
+          hx-include="{{ step_include | default('#browse-form') }}" hx-indicator="#browse-spinner"
+          hx-vals='{"scan_id": "{{ step.scan_id }}", "offset": "{{ step.next_offset }}"}'>
+    Nächste {{ step.next_count }} laden ({{ step.remaining }} übrig) →
+  </button>
+  {% if step.remaining > step.next_count %}
+  <button type="button" class="btn-ghost step-all" hx-post="{{ step_url }}" hx-target="#file-list"
+          hx-include="{{ step_include | default('#browse-form') }}" hx-indicator="#browse-spinner"
+          hx-vals='{"scan_id": "{{ step.scan_id }}", "offset": "{{ step.all_offset }}"}'>
+    Alle verbleibenden laden ({{ step.remaining }})
+  </button>
+  {% endif %}
+  {% else %}
+  <span class="step-done">✓ alle {{ step.total }} Dateien geladen</span>
+  {% endif %}
+  <span class="muted step-hint">Filter, Auswahl und „Ausführen“ gelten für diesen Schritt · „Nächste laden“ geht auch ohne Ausführen.</span>
+</div>
+{% endif %}

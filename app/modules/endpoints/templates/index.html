@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Endpunkte — Metadata Suite</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/favicon-192.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .ep-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 24px 40px; }
+  .ep-bar { position: sticky; top: 0; z-index: 5; background: var(--bg, #fff); padding: 10px 0 12px; border-bottom: 1px solid var(--border, #d0d4da);
+            display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+  .ep-bar label { display: inline-flex; flex-direction: row; gap: 6px; align-items: center; font-size: .92em; margin: 0; }
+  .ep-bar #custom { display: inline-flex; gap: 10px; }
+  .ep-wrap a:not(.module-pill) { color: var(--accent, #2f6fed); }
+  .ep-wrap a:not(.module-pill):visited { color: var(--accent, #2f6fed); opacity: .85; }
+  .ep-bar select, .ep-bar input { font: inherit; }
+  .ep-bar input[type=number] { width: 9.5em; }
+  .ep-bar input[type=search] { min-width: 14em; }
+  .ep-toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 12px 0 4px; font-size: .92em; }
+  .ep-sec h2 { margin: 28px 0 4px; }
+  .ep-note { color: var(--muted, #666); font-size: .92em; margin: 2px 0 8px; }
+  .ep-grp { margin: 14px 0 0; border: 1px solid var(--border, #d0d4da); border-radius: 8px; padding: 8px 14px 10px; }
+  .ep-grp h3 { margin: 4px 0 2px; font-size: 1.02em; }
+  .ep-item { display: grid; grid-template-columns: minmax(10em, 17em) 1fr auto; gap: 4px 12px; align-items: baseline; padding: 4px 0; border-top: 1px dashed var(--border, #d0d4da); }
+  .ep-item:first-of-type { border-top: 0; }
+  .ep-item .lbl { color: var(--muted, #555); }
+  .ep-item a, .ep-item code.url { word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88em; }
+  .ep-item pre { margin: 0; white-space: pre-wrap; word-break: break-all; font-size: .85em; background: var(--panel, rgba(127,127,127,.1)); padding: 6px 8px; border-radius: 6px; }
+  .ep-item pre.curl { cursor: copy; border: 1px solid transparent; }
+  .ep-item pre.curl:hover { border-color: var(--accent, #4f8cff); }
+  .ep-item pre.curl.copied { border-color: #2e9d57; background: rgba(46,157,87,.15); }
+  .ep-item button { font-size: .8em; padding: 2px 8px; }
+  .ep-badge { font-size: .72em; border: 1px solid var(--border, #aaa); border-radius: 4px; padding: 0 5px; margin-right: 6px; color: var(--muted, #666); }
+  .ep-warn { margin: 10px 0; padding: 8px 12px; border: 1px solid var(--border, #d0d4da); border-radius: 8px; font-size: .92em; }
+  [hidden] { display: none !important; }
+  @media (max-width: 760px) { .ep-item { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>🔗 Endpunkte</h1>
+  <nav class="modules-nav">
+    <a class="module-pill info-pill" href="/" title="Start (Dashboard)" aria-label="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></svg></a>
+    <a class="module-pill" href="/timestamp/">Timestamp</a>
+    <a class="module-pill" href="/gps/">GPS Sidecar</a>
+    <a class="module-pill" href="/gpsfill/">GPS füllen</a>
+    <a class="module-pill" href="/geooverrides/">Geo-Overrides</a>
+    <a class="module-pill" href="/ctxfill/">Kontext nachfüllen</a>
+    <a class="module-pill" href="/ai/">AI-Beschreibung</a>
+    <a class="module-pill" href="/nfo/">NFO Maker</a>
+    <a class="module-pill" href="/collage/">Collage</a>
+    <a class="module-pill" href="/mtime/">Datei-Zeitstempel</a>
+    <a class="module-pill" href="/shortvideos/">Kurzvideos löschen</a>
+    <a class="module-pill" href="/year/">Jahreslauf</a>
+    <span class="module-pill info-pill active" title="Endpunkte des geo-service" aria-label="Endpunkte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></span>
+    <a class="module-pill info-pill" href="/docs/" title="Dokumentation (README)" aria-label="Dokumentation"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 7.5h6"/><path d="M9.5 11h6"/></svg></a>
+    <a class="module-pill info-pill" href="/info/" title="Info: Versionen, Umgebung, Pfade" aria-label="Info"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></a>
+  </nav>
+</header>
+<main class="ep-wrap">
+  <div class="ep-bar">
+    <label>Beispielort
+      <select id="sample">
+        {% for s in samples %}<option value="{{ loop.index0 }}">{{ '🏠 ' if s.home else '' }}{{ s.label }}</option>{% endfor %}
+        <option value="custom">Eigene Koordinaten …</option>
+      </select>
+    </label>
+    <span id="custom" hidden>
+      <label>lat <input type="number" id="c-lat" step="any" value="48.1454285"></label>
+      <label>lon <input type="number" id="c-lng" step="any" value="16.3257166"></label>
+    </span>
+    <span id="coords" class="ep-note" style="margin:0"></span>
+    <label>🔎 <input type="search" id="q" placeholder="Endpunkt filtern …"></label>
+  </div>
+  {% if not enabled %}
+    <p class="ep-warn">Der geo-service ist nicht verbunden (<code>GEO_SERVICE_URL</code> leer): die Links zeigen auf die Standardports, die Beispielorte stammen aus der Vorgabe statt aus deinen Overrides.</p>
+  {% endif %}
+  {% if token %}
+    <p class="ep-warn">Der Service verlangt einen Token (<code>GEO_SERVICE_TOKEN</code>). Links im Browser funktionieren nur bei den Nominatim-/Photon-Ports ohne <code>GEO_COMPAT_AUTH</code>; für die übrigen den Header <code>X-Api-Key</code> senden (die curl-Zeilen unten enthalten ihn schon).</p>
+  {% endif %}
+  <p class="ep-note">Basis: <code>{{ bases.api }}</code> · Nominatim <code>{{ bases.nom }}</code> · Photon <code>{{ bases.photon }}</code>
+    (anpassbar mit <code>GEO_SERVICE_PUBLIC_URL</code>). Links öffnen in einem neuen Tab und nutzen den gewählten Beispielort aus deinen Overrides.</p>
+  <div class="ep-toc">
+    {% for sec in sections %}<a href="#{{ sec.id }}">{{ sec.title }}</a>{% endfor %}
+  </div>
+  {% for sec in sections %}
+  <section class="ep-sec" id="{{ sec.id }}">
+    <h2>{{ loop.index }}. {{ sec.title }}</h2>
+    {% if sec.note %}<p class="ep-note">{{ sec.note | mdcode }}</p>{% endif %}
+    {% for g in sec.groups %}
+    <div class="ep-grp">
+      <h3>{{ g.title }}</h3>
+      {% if g.note %}<div class="ep-note">{{ g.note | mdcode }}</div>{% endif %}
+      {% for it in g['items'] %}
+      <div class="ep-item" data-text="{{ g.title }} {{ it.label }} {{ it.path }}{{ ' curl' if (it.curl or it.script) else '' }}">
+        <span class="lbl">{% if it.method and it.method != 'GET' %}<span class="ep-badge">{{ it.method }}</span>{% endif %}{{ it.label }}</span>
+        {% if it.script %}
+          <pre class="curl script" data-script="1" title="Klicken zum Kopieren"></pre>
+        {% elif it.curl %}
+          <pre class="curl" data-base="{{ g.port }}" data-method="GET" data-path="{{ it.path }}" data-body="" title="Klicken zum Kopieren"></pre>
+        {% elif it.method and it.method != 'GET' %}
+          <pre class="curl" data-base="{{ g.port }}" data-method="{{ it.method }}" data-path="{{ it.path }}" data-body="{{ it.body or '' }}" title="Klicken zum Kopieren"></pre>
+        {% elif it.needs_id %}
+          <a class="tpl idlink" target="_blank" rel="noopener" data-base="{{ g.port }}" data-path="{{ it.path }}"></a>
+        {% else %}
+          <a class="tpl" target="_blank" rel="noopener" data-base="{{ g.port }}" data-path="{{ it.path }}"></a>
+        {% endif %}
+        <button type="button" class="copy">Kopieren</button>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</main>
+<script>
+(function () {
+  var BASES = {{ bases | tojson }};
+  var SAMPLES = {{ samples | tojson }};
+  var TOKEN = {{ 'true' if token else 'false' }};
+  var $ = function (id) { return document.getElementById(id); };
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function isoLocal(d) {                     // 2026-10-04T12:24:39+02:00, '+' encoded for URLs
+    var off = -d.getTimezoneOffset(), sg = off >= 0 ? "%2B" : "-", a = Math.abs(off);
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()) + sg + pad(Math.floor(a / 60)) + ":" + pad(a % 60);
+  }
+  function vars() {
+    var v = $("sample").value, s;
+    if (v === "custom") s = { lat: parseFloat($("c-lat").value), lng: parseFloat($("c-lng").value), postal: "2552", city: "Musterdorf", cc: "AT" };
+    else s = SAMPLES[parseInt(v, 10)];
+    var now = new Date(), y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    var noon = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 12, 0, 0);
+    var ep = Math.floor(noon.getTime() / 1000);
+    return {
+      lat: s.lat, lng: s.lng, postal: encodeURIComponent(s.postal || ""), city: encodeURIComponent(s.city || ""), cc: encodeURIComponent(s.cc || "AT"),
+      time: isoLocal(noon),
+      day_from: isoLocal(new Date(y.getFullYear(), y.getMonth(), y.getDate(), 0, 0, 0)),
+      day_to: isoLocal(new Date(y.getFullYear(), y.getMonth(), y.getDate(), 23, 59, 59)),
+      year_from: now.getFullYear() + "-01-01", year_to: now.getFullYear() + "-12-31",
+      date: now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate()),
+      epoch: ep, epoch_gps: ep - 3600
+    };
+  }
+  function fill(t, v) { return t.replace(/\{(\w+)\}/g, function (m, k) { return (k in v) ? v[k] : m; }); }
+  var IDS = {};
+  function render() {
+    var v = vars();
+    v.id = IDS.id; v.state_id = IDS.state; v.county_id = IDS.county;
+    $("custom").hidden = $("sample").value !== "custom";
+    $("coords").textContent = "lat " + v.lat + " · lon " + v.lng;
+    document.querySelectorAll(".tpl").forEach(function (el) {
+      var u = BASES[el.dataset.base] + fill(el.dataset.path, v);
+      var open = /\{(id|state_id|county_id)\}/.test(u);          // geonameId not known (yet)
+      if (el.tagName === "A") {
+        if (open) { el.removeAttribute("href"); el.title = "geonameId wird ermittelt … (oder der Service ist nicht erreichbar)"; }
+        else { el.href = u; el.removeAttribute("title"); }
+      }
+      el.textContent = u;
+    });
+    document.querySelectorAll("pre.curl:not([data-script])").forEach(function (el) {
+      var u = BASES[el.dataset.base] + fill(el.dataset.path, v), m = el.dataset.method, b = el.dataset.body,
+          parts = [m === "GET" ? "curl -s '" + u + "'" : "curl -X " + m + " '" + u + "'"];
+      if (TOKEN) parts.push("-H 'X-Api-Key: DEIN_TOKEN'");
+      if (b) { parts.push("-H 'Content-Type: application/json'"); parts.push("-d '" + fill(b, v) + "'"); }
+      el.textContent = parts.join(m === "GET" ? " " : " \\\n     ");
+    });
+    document.querySelectorAll("pre.curl[data-script]").forEach(function (el) {     // all single curl lines of the section, with BASE=...
+      var lines = ["BASE=" + BASES.api];
+      el.closest(".ep-grp").querySelectorAll("pre.curl:not([data-script])").forEach(function (p) {
+        lines.push(p.textContent.replace("'" + BASES[p.dataset.base], "\"$BASE").replace(/'$/, "\""));
+      });
+      el.textContent = lines.join("\n");
+    });
+  }
+  var idTimer = null;
+  function loadIds() {                       // real geonameIds for the chosen point (via the suite, no CORS needed)
+    var v = vars(); IDS = {};
+    clearTimeout(idTimer);
+    idTimer = setTimeout(function () {
+      fetch("/endpoints/ids?lat=" + encodeURIComponent(v.lat) + "&lng=" + encodeURIComponent(v.lng))
+        .then(function (r) { return r.json(); })
+        .then(function (j) { IDS = j || {}; render(); })
+        .catch(function () {});
+    }, 250);
+  }
+  $("sample").addEventListener("change", function () { render(); loadIds(); });
+  ["c-lat", "c-lng"].forEach(function (id) { $(id).addEventListener("input", function () { render(); loadIds(); }); });
+  $("q").addEventListener("input", function () {
+    var q = this.value.trim().toLowerCase();
+    document.querySelectorAll(".ep-item").forEach(function (el) { el.hidden = q && el.dataset.text.toLowerCase().indexOf(q) < 0; });
+    document.querySelectorAll(".ep-grp").forEach(function (g) { g.hidden = q && !g.querySelector(".ep-item:not([hidden])"); });
+  });
+  function copyText(text) {
+    (navigator.clipboard && window.isSecureContext ? navigator.clipboard.writeText(text) : Promise.reject()).catch(function () {
+      var ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (x) {} ta.remove();
+    });
+  }
+  document.addEventListener("click", function (e) {
+    var pre = e.target.closest("pre.curl");                    // a click on the whole command line copies it
+    if (pre) {
+      if (window.getSelection && String(window.getSelection())) return;      // user is selecting text, not clicking
+      copyText(pre.textContent); pre.classList.add("copied");
+      var b0 = pre.closest(".ep-item").querySelector("button.copy"), o0 = b0.textContent; b0.textContent = "✓ kopiert";
+      setTimeout(function () { pre.classList.remove("copied"); b0.textContent = o0; }, 1100);
+      return;
+    }
+    var b = e.target.closest("button.copy"); if (!b) return;
+    var row = b.closest(".ep-item"), el = row.querySelector(".tpl, pre.curl"), text = el.textContent;
+    copyText(text);
+    var old = b.textContent; b.textContent = "✓"; setTimeout(function () { b.textContent = old; }, 900);
+  });
+  render();
+  loadIds();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }} „Vorschau laden" erneut klicken, um von vorn zu beginnen.</p>
+{% else %}
+<form id="scan-select-form" hx-post="/ai/generate/start" hx-target="#file-list" hx-indicator="#generate-spinner">
+  <input type="hidden" name="all_scanned_rows" value='{{ all_rows_json }}'>
+  {# Carried through generate/start -> execute purely so _results.html can offer a
+     "Weiter zu NFO Maker" handoff button prefilled with this folder. #}
+  <input type="hidden" name="step_json" value="{{ step_json | default('') }}">
+  <input type="hidden" name="path" value="{{ form_state.path if form_state is defined else '' }}">
+  <input type="hidden" name="root_path" value="{{ form_state.root_path if form_state is defined else '' }}">
+
+  {% if notice %}
+  <p class="hint cancelled-info">{{ notice }}</p>
+  {% endif %}
+
+  {% include "_stepbar.html" %}
+  <div class="list-toolbar">
+    <span>{{ rows|length }} Datei(en) gefunden</span>
+    {% if skipped_done %}<span>{{ skipped_done }} bereits mit Beschreibung übersprungen</span>{% endif %}
+    {% if camera_model %}<span>📷 {{ camera_filtered_count }} andere Kamera(s) ausgeblendet (Filter „{{ camera_model }}“)</span>{% endif %}
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=true)">Alle auswählen</button>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=false)">Keine</button>
+    <label class="checkbox-field inline">
+      <input type="checkbox" name="embed_in_image" value="true" {% if form_state is defined and form_state.embed_in_image %}checked{% endif %}>
+      Bei Bildern zusätzlich direkt einbetten
+    </label>
+  </div>
+
+  {% if rows|length == 0 %}
+    {% if skipped_done %}
+    <p class="muted">Alle {{ skipped_done }} gefundenen Datei(en) haben bereits eine Beschreibung.
+      „Vorhandene Beschreibungen überschreiben" aktivieren, um sie erneut anzuzeigen.</p>
+    {% else %}
+    <p class="muted">Keine passenden Dateien gefunden.</p>
+    {% endif %}
+  {% endif %}
+
+  <div class="rows">
+    {% for r in rows %}
+    <label class="row">
+      <input type="checkbox" class="row-checkbox" name="selected" value="{{ r.path }}"
+             {% if selected_paths is not defined or r.path in selected_paths %}checked{% endif %}>
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">📍 Ortskontext für den Prompt:</span>
+          {% if r.geo_context %}
+          <span class="geo-coords">{{ r.geo_context }}</span>
+          {% else %}
+          <span class="geo-coords muted">— keiner gefunden (kein Country/State/City im .xmp -- ggf. erst GPS Sidecar ausführen)</span>
+          {% endif %}
+        </div>
+        {% if r.context_items %}
+        <div class="meta-row">
+          <span class="meta-label">🕒 Weitere Kontexte:</span>
+          <span class="geo-coords">{% for l, v in r.context_items %}{{ l }}: {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+        </div>
+        {% elif r.extra_context %}
+        <div class="meta-row">
+          <span class="meta-label">🕒 Zusatzkontext (Geo-Service):</span>
+          <span class="geo-coords">{{ r.extra_context }}</span>
+        </div>
+        {% endif %}
+        {% if r.existing_description %}
+        <div class="meta-row">
+          <span class="meta-label">Vorhandene Beschreibung (wird überschrieben):</span>
+        </div>
+        <div class="warn">{{ r.existing_description }}</div>
+        {% endif %}
+        {% if r.rel_dir %}<div class="subdir-badge">📁 {{ r.rel_dir }}</div>{% endif %}
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  {% if rows|length > 0 %}
+  <div class="actions-row sticky-bottom">
+    <button type="submit" class="btn-primary btn-execute">Beschreibung generieren</button>
+    <span id="generate-spinner" class="htmx-indicator spinner">wird gestartet…</span>
+  </div>
+  {% endif %}
+</form>
+{% endif %}

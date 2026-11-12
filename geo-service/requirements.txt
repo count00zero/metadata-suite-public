@@ -1,0 +1,7 @@
+# same pins as metadata-suite/requirements.txt where they overlap, so both containers behave alike
+fastapi==0.162.2
+uvicorn[standard]==0.34.0
+requests==2.34.2
+timezonefinder==6.5.7
+tzdata==2025.1
+holidays==0.106

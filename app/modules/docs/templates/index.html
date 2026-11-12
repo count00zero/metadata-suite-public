@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dokumentation — Metadata Suite</title>
+<script defer src="/static/htmx.min.js"></script>
+<script src="/static/safe-observer.js"></script>
+<script defer src="/static/alpine.min.js"></script>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/favicon-192.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>Dokumentation</h1>
+  <nav class="modules-nav">
+    <a class="module-pill info-pill" href="/" title="Start (Dashboard)" aria-label="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></svg></a>
+    <a class="module-pill" href="/timestamp/">Timestamp</a>
+    <a class="module-pill" href="/gps/">GPS Sidecar</a>
+    <a class="module-pill" href="/gpsfill/">GPS füllen</a>
+    <a class="module-pill" href="/geooverrides/">Geo-Overrides</a>
+    <a class="module-pill" href="/ctxfill/">Kontext nachfüllen</a>
+    <a class="module-pill" href="/ai/">AI-Beschreibung</a>
+    <a class="module-pill" href="/nfo/">NFO Maker</a>
+    <a class="module-pill" href="/collage/">Collage</a>
+    <a class="module-pill" href="/mtime/">Datei-Zeitstempel</a>
+    <a class="module-pill" href="/shortvideos/">Kurzvideos löschen</a>
+    <a class="module-pill" href="/year/">Jahreslauf</a>
+    <a class="module-pill info-pill" href="/endpoints/" title="Endpunkte des geo-service (Links mit deinen Beispielorten)" aria-label="Endpunkte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></a>
+    <span class="module-pill info-pill active" title="Dokumentation (README)" aria-label="Dokumentation"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 7.5h6"/><path d="M9.5 11h6"/></svg></span>
+    <a class="module-pill info-pill" href="/info/" title="Info: Versionen, Umgebung, Pfade" aria-label="Info" aria-label="Info"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></a>
+  </nav>
+</header>
+<main class="doc-page" x-data="{ q: '', tocOpen: false,
+    vis(el) { return !this.q || (el.dataset.text || '').includes(this.q.toLowerCase()); } }">
+  <div class="doc-tabs">
+    {% for t in tabs %}{% if t.available %}<a class="doc-tab{% if t.key == cur %} active{% endif %}" href="/docs/?doc={{ t.key }}">{{ t.title }}</a>{% endif %}{% endfor %}
+    <input class="doc-search" type="search" x-model="q" placeholder="In dieser Seite suchen …" aria-label="Suchen">
+    <button type="button" class="doc-toc-btn" @click="tocOpen = !tocOpen" aria-label="Inhaltsverzeichnis">☰</button>
+  </div>
+  {% if d.missing %}
+  <section class="panel"><p class="muted">Die Datei zu „{{ d.title }}“ wurde im Container nicht gefunden.</p></section>
+  {% else %}
+  <div class="doc-layout">
+    <nav class="doc-toc" :class="{ open: tocOpen }" aria-label="Inhalt">
+      {% for h in d.toc %}
+      <a href="#{{ h.id }}" @click="tocOpen = false">{{ h.name|safe }}</a>
+      {% for c in h.children %}<a class="sub" href="#{{ c.id }}" @click="tocOpen = false">{{ c.name|safe }}</a>{% endfor %}
+      {% endfor %}
+    </nav>
+    <article class="doc-body">
+      <p class="doc-source muted">Quelle: <code>{{ d.source }}</code> – wird bei jeder Änderung der Datei neu dargestellt.</p>
+      {% for s in d.sections %}
+      <section class="doc-section" data-text="{{ s.text[:60000] }}" x-show="vis($el)">{{ s.html|safe }}</section>
+      {% endfor %}
+    </article>
+  </div>
+  {% endif %}
+</main>
+</body>
+</html>

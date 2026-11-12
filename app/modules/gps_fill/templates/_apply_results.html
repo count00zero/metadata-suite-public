@@ -1,0 +1,17 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% else %}
+<div class="results">
+  <p class="hint">{{ ok_n }} Sidecar(s) geschrieben{% if err_n %}, <strong>{{ err_n }} Fehler</strong>{% endif %}{% if marked %}, {{ marked }} als „kein GPS gefunden“ markiert{% endif %}.
+  Die Mediendateien selbst wurden nicht verändert.</p>
+  {% for r in results if not r.ok %}
+  <div class="row row-warn"><div class="meta"><div class="meta-row">
+    <span class="orig" title="{{ r.path }}">{{ r.filename }}</span><span class="meta-label">⚠ {{ r.message }}</span></div></div></div>
+  {% endfor %}
+  {% if ok_n %}
+  <details class="drift-box"><summary>Geschriebene Dateien</summary>
+    <ul class="skip-list">{% for r in results if r.ok %}<li>{{ r.filename }} — {{ "%.5f"|format(r.lat) }}, {{ "%.5f"|format(r.lon) }} (Konfidenz {{ r.confidence }})</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</div>
+{% endif %}

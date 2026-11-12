@@ -1,0 +1,17 @@
+<div id="file-list-progress"
+     hx-get="{{ progress_url or (module_prefix ~ '/browse/progress/' ~ job_id) }}"
+     hx-trigger="load delay:400ms" hx-target="this" hx-swap="outerHTML">
+  <div class="progress-panel">
+    <div class="progress-row">
+      <span>
+        {% if job.phase %}{{ job.phase }}: {% endif -%}
+        {{ job.done }} / {{ job.total }} {{ unit_label or "Datei(en) verarbeitet" }}
+        {%- if job.current_name %} — aktuell: {{ job.current_name }}{% endif %}
+      </span>
+      <button type="button" class="btn-ghost" id="progress-cancel-btn"
+              hx-post="{{ cancel_url or (module_prefix ~ '/browse/cancel/' ~ job_id) }}" hx-swap="none"
+              onclick="this.disabled=true; this.textContent='Wird abgebrochen…';">Abbrechen</button>
+    </div>
+    <div class="progress-bar"><div class="progress-bar-fill" style="width: {{ job.pct }}%"></div></div>
+  </div>
+</div>

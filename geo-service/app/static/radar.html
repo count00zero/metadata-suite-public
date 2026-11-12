@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Regenradar</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/ui-assets/maplibre-gl/maplibre-gl.css">
+<style>
+  :root { --bg:#fff; --fg:#1d2733; --muted:#5d6b7a; --line:#d5dbe3; --accent:#1b6fd1; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1c2229; --fg:#e8edf2; --muted:#9aa7b5; --line:#34404c; --accent:#5aa2f0; }
+  }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  #map { position:absolute; inset:0; }
+  .panel { position:absolute; left:12px; right:12px; bottom:calc(36px + env(safe-area-inset-bottom));
+    max-width:560px; margin:0 auto; background:var(--bg); border:1px solid var(--line);
+    border-radius:12px; padding:10px 14px 12px; box-shadow:0 4px 18px rgba(0,0,0,.22); z-index:5; }
+  .row { display:flex; align-items:center; gap:10px; }
+  #time { font-weight:600; font-variant-numeric:tabular-nums; min-width:9.5em; }
+  #rel { color:var(--muted); font-size:13px; flex:1; text-align:right; }
+  button { font:inherit; color:var(--fg); background:transparent; border:1px solid var(--line);
+    border-radius:8px; padding:6px 12px; cursor:pointer; min-height:36px; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; min-width:44px; }
+  input[type=range] { width:100%; margin:8px 0 2px; accent-color:var(--accent); }
+  #status { color:var(--muted); font-size:12.5px; margin-top:4px; min-height:1.2em; }
+  #status.err { color:#d23b3b; }
+  .legend { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); margin-top:6px; }
+  .legend i { flex:1; height:8px; border-radius:4px;
+    background:linear-gradient(90deg,#8fd0f3,#4aa3ec,#2a6fd6,#2c9b4a,#e7d52d,#ee8a1e,#d8271f,#a3167f); }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="panel">
+  <div class="row">
+    <button id="play" class="primary" aria-label="Abspielen/Pause">❚❚</button>
+    <span id="time">–</span>
+    <span id="rel"></span>
+    <button id="now" title="Zum aktuellsten Bild">Jetzt</button>
+  </div>
+  <input id="slider" type="range" min="0" max="0" value="0" step="1" aria-label="Zeitpunkt">
+  <div class="legend"><span>leicht</span><i></i><span>stark</span></div>
+  <div id="status">Lade Radar …</div>
+</div>
+
+<script src="/ui-assets/maplibre-gl/maplibre-gl.js"></script>
+<script>window.GEO_RADAR = /*GEO_RADAR_CONFIG*/{};</script>
+<script>
+/* ===================== Einstellungen ===================== */
+const CONFIG = Object.assign({
+  styleUrl: "",                  // GEO_RADAR_STYLE_URL (default: derived from GEO_TILE_URL) -- vector style of your tileserver-GL
+  center: [16.32, 48.17],        // [lng, lat]; the service injects your home (GEO_HOME_LAT/LON or place of kind "Zuhause")
+  zoom: 8.2,
+  radarApi: "https://api.rainviewer.com/public/weather-maps.json",   // GEO_RADAR_API: RainViewer-compatible (own LibreWXR: http://<host>:8080/public/weather-maps.json)
+  radarColor: 2,                 // GEO_RADAR_COLOR: 2 = Universal Blue
+  radarOptions: "1_0",           // GEO_RADAR_OPTIONS: smooth_snow, 1_0 = smoothed, no snow colours
+  radarMaxZoom: 7,               // GEO_RADAR_MAXZOOM: RainViewer delivers up to zoom 7, beyond that it is scaled up
+  radarOpacity: 0.72,
+  frameMs: 600,                  // animation speed
+  lastFramePauseMs: 1400,        // pause on the newest frame
+  refreshMs: 5 * 60 * 1000       // reload the radar every 5 minutes
+}, window.GEO_RADAR || {});
+CONFIG.homeMarker = !!(window.GEO_RADAR && window.GEO_RADAR.center);
+
+/* ========================================================= */
+
+const $ = id => document.getElementById(id);
+const fmtTime = new Intl.DateTimeFormat("de-AT", { hour:"2-digit", minute:"2-digit", timeZone:"Europe/Vienna" });
+const fmtDay  = new Intl.DateTimeFormat("de-AT", { weekday:"short", timeZone:"Europe/Vienna" });
+
+if (!CONFIG.styleUrl) {
+  document.getElementById("status").textContent = "Kein Kartenstil: GEO_RADAR_STYLE_URL (oder GEO_TILE_URL) in der .env setzen.";
+  document.getElementById("status").className = "err";
+  throw new Error("no style url");
+}
+const map = new maplibregl.Map({
+  container: "map", style: CONFIG.styleUrl, center: CONFIG.center, zoom: CONFIG.zoom,
+  attributionControl: false, hash: true
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass:false }), "top-right");
+map.addControl(new maplibregl.GeolocateControl({ trackUserLocation:false }), "top-right");
+map.addControl(new maplibregl.AttributionControl({
+  compact: true,
+  customAttribution: 'Radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> · ' + (CONFIG.attribution || 'Karte: © OpenStreetMap, Protomaps')
+}), "bottom-left");
+
+let frames = [];       // [{time, id}]
+let current = 0, playing = true, timer = null, mapReady = false, pendingData = null;
+
+function setStatus(msg, err) { const s = $("status"); s.textContent = msg; s.className = err ? "err" : ""; }
+
+function firstSymbolLayer() {
+  const l = map.getStyle().layers.find(l => l.type === "symbol");
+  return l ? l.id : undefined;      // Radar unter die Beschriftungen legen
+}
+
+function clearFrames() {
+  frames.forEach(f => {
+    if (map.getLayer(f.id)) map.removeLayer(f.id);
+    if (map.getSource(f.id)) map.removeSource(f.id);
+  });
+  frames = [];
+}
+
+function applyData(data) {
+  const past = (data.radar && data.radar.past) || [];
+  if (!past.length) { setStatus("Keine Radarbilder verfügbar.", true); return; }
+  const previousTime = frames[current] && frames[current].time;
+  clearFrames();
+  const before = firstSymbolLayer();
+  past.forEach(p => {
+    const id = "radar-" + p.time;
+    const url = `${data.host}${p.path}/256/{z}/{x}/{y}/${CONFIG.radarColor}/${CONFIG.radarOptions}.png`;
+    map.addSource(id, { type:"raster", tiles:[url], tileSize:256, maxzoom:CONFIG.radarMaxZoom });
+    map.addLayer({ id, type:"raster", source:id,
+      paint:{ "raster-opacity":0, "raster-fade-duration":0, "raster-resampling":"linear" } }, before);
+    frames.push({ time:p.time, id });
+  });
+  const slider = $("slider");
+  slider.max = frames.length - 1;
+  // gleiche Position beibehalten, sonst neuestes Bild
+  const keep = frames.findIndex(f => f.time === previousTime);
+  show(keep >= 0 ? keep : frames.length - 1);
+  setStatus("Aktualisiert " + fmtTime.format(new Date()) + " · letzte 2 Stunden, alle 10 Minuten");
+  schedule();
+}
+
+function show(i) {
+  if (!frames.length) return;
+  current = Math.max(0, Math.min(frames.length - 1, i));
+  frames.forEach((f, k) => {
+    if (map.getLayer(f.id)) map.setPaintProperty(f.id, "raster-opacity", k === current ? CONFIG.radarOpacity : 0);
+  });
+  $("slider").value = current;
+  const t = new Date(frames[current].time * 1000);
+  $("time").textContent = fmtDay.format(t) + " " + fmtTime.format(t);
+  const min = Math.round((Date.now() - t.getTime()) / 60000);
+  $("rel").textContent = min <= 1 ? "aktuell" : "vor " + min + " min";
+}
+
+function schedule() {
+  clearTimeout(timer);
+  if (!playing || frames.length < 2) return;
+  const last = current === frames.length - 1;
+  timer = setTimeout(() => { show(last ? 0 : current + 1); schedule(); },
+                     last ? CONFIG.lastFramePauseMs : CONFIG.frameMs);
+}
+
+function setPlaying(p) { playing = p; $("play").textContent = p ? "❚❚" : "▶"; schedule(); }
+
+async function loadRadar() {
+  try {
+    const res = await fetch(CONFIG.radarApi, { cache:"no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if (mapReady) applyData(data); else pendingData = data;
+  } catch (e) {
+    setStatus("Radar konnte nicht geladen werden (" + e.message + "). Nächster Versuch in 5 Minuten.", true);
+  }
+}
+
+map.on("load", () => {
+  mapReady = true;
+  if (CONFIG.homeMarker) new maplibregl.Marker({ color:"#d23b3b", scale:0.8 }).setLngLat(CONFIG.center).addTo(map);
+  if (pendingData) { applyData(pendingData); pendingData = null; schedule(); }
+});
+map.on("error", e => {
+  const m = (e && e.error && e.error.message) || "";
+  if (!mapReady) setStatus("Karte konnte nicht geladen werden: " + (m || "unbekannter Fehler") + " – ist " + CONFIG.styleUrl + " erreichbar?", true);
+});
+
+$("play").onclick = () => setPlaying(!playing);
+$("now").onclick  = () => { show(frames.length - 1); };
+$("slider").oninput = e => { setPlaying(false); show(+e.target.value); };
+
+loadRadar().then(() => { if (mapReady) schedule(); });
+setInterval(loadRadar, CONFIG.refreshMs);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) loadRadar(); });
+</script>
+</body>
+</html>

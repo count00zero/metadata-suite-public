@@ -1,0 +1,20 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% else %}
+<div class="results">
+  <p class="hint">{{ ok_n }} Datei(en) bearbeitet{% if err_n %}, <strong>{{ err_n }} mit Fehler</strong>{% endif %} · bei {{ added_n }} kamen neue Felder dazu{% if nfo_n %} · {{ nfo_n }} .nfo aktualisiert{% endif %}{% if image_n %} · {{ image_n }} Foto(s) eingebettet{% endif %}.
+  {% if cancelled %}<strong>Abgebrochen.</strong>{% endif %} Danach „Nach fehlenden Infos suchen“ erneut klicken, um den Rest zu prüfen.</p>
+  {% for r in results if not r.ok or r.notes %}
+  <div class="row row-warn"><div class="meta"><div class="meta-row">
+    <span class="orig" title="{{ r.path }}">{{ r.filename }}</span><span class="meta-label">{{ "⚠" if not r.ok else "ℹ" }} {{ r.notes | join(" · ") }}</span></div></div></div>
+  {% endfor %}
+  {% if handoff_id %}
+  <div class="actions-row"><a class="btn-ghost" href="/ai/?handoff_id={{ handoff_id }}">Weiter zu AI-Beschreibung →</a></div>
+  {% endif %}
+  {% if results %}
+  <details class="drift-box"><summary>Alle Dateien</summary>
+    <ul class="skip-list">{% for r in results %}<li>{{ r.filename }} — {% if r.added %}+ {{ r.added | join(", ") }}{% else %}nichts Neues{% endif %}{% if r.nfo %} · .nfo{% endif %}{% if r.image %} · Bild{% endif %}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</div>
+{% endif %}

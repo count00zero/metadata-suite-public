@@ -1,0 +1,9 @@
+fastapi==0.162.2
+uvicorn[standard]==0.34.0
+jinja2==3.1.6
+python-multipart==0.0.33
+pillow==13.0.0
+timezonefinder==6.5.7
+tzdata==2025.1
+requests==2.34.2
+markdown==3.11.3

@@ -1,0 +1,76 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% else %}
+<form id="execute-form" hx-post="/ai/execute/start" hx-target="#results-panel" hx-indicator="#exec-spinner" hx-on::before-request="var b=document.getElementById('exec-btn'); if(b) b.disabled=true;">
+  <input type="hidden" name="all_rows" value='{{ all_rows_json }}'>
+  {# Carried through to /execute purely so _results.html can offer a "Weiter zu NFO
+     Maker" handoff button prefilled with the folder that was just processed. #}
+  <input type="hidden" name="handoff_path" value="{{ form_state.path if form_state is defined else '' }}">
+  <input type="hidden" name="handoff_root_path" value="{{ form_state.root_path if form_state is defined else '' }}">
+
+  {% include "_stepbar.html" %}
+  <div class="list-toolbar">
+    <span>{{ rows|length }} Datei(en)</span>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>{ if(!c.disabled) c.checked=true })">Alle auswählen</button>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=false)">Keine</button>
+    <label class="checkbox-field inline">
+      <input type="checkbox" name="embed_in_image" value="true" {% if form_state is defined and form_state.embed_in_image %}checked{% endif %}>
+      Bei Bildern zusätzlich direkt einbetten
+    </label>
+  </div>
+
+  {% if rows|length == 0 %}
+  <p class="muted">Keine Dateien verarbeitet.</p>
+  {% endif %}
+
+  <div class="rows">
+    {% for r in rows %}
+    <label class="row {% if r.warn %}row-warn{% endif %}">
+      <input type="checkbox" class="row-checkbox" name="selected" value="{{ r.path }}"
+             {% if not r.new_description %}disabled{% else %}checked{% endif %}>
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+          {% if r.provider %}<span class="meta-label">({{ r.provider }}/{{ r.model }})</span>{% endif %}
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">📍 Ortskontext, der an die KI übergeben wurde:</span>
+          {% if r.geo_context %}
+          <span class="geo-coords">{{ r.geo_context }}</span>
+          {% else %}
+          <span class="geo-coords muted">— keiner (kein Country/State/City im .xmp gefunden)</span>
+          {% endif %}
+        </div>
+        {% if r.context_items %}
+        <div class="meta-row">
+          <span class="meta-label">🕒 Weitere Kontexte (an die KI übergeben):</span>
+          <span class="geo-coords">{% for l, v in r.context_items %}{{ l }}: {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+        </div>
+        {% elif r.extra_context %}
+        <div class="meta-row">
+          <span class="meta-label">🕒 Zusatzkontext (Geo-Service):</span>
+          <span class="geo-coords">{{ r.extra_context }}</span>
+        </div>
+        {% endif %}
+        {% if r.new_description %}
+        <div class="geo-badge">{{ r.new_description }}</div>
+        {% endif %}
+        {% if r.existing_description and r.new_description and r.existing_description != r.new_description %}
+        <div class="old-desc"><span class="meta-label">Bisher:</span> {{ r.existing_description }}</div>
+        {% endif %}
+        {% if r.warn %}<div class="warn">⚠ {{ r.warn }}</div>{% endif %}
+        {% if r.rel_dir %}<div class="subdir-badge">📁 {{ r.rel_dir }}</div>{% endif %}
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  {% if rows|length > 0 %}
+  <div class="actions-row sticky-bottom">
+    <button type="submit" class="btn-primary btn-execute" id="exec-btn">Ausführen</button>
+    <span id="exec-spinner" class="htmx-indicator spinner">wird angewendet…</span>
+  </div>
+  {% endif %}
+</form>
+{% endif %}

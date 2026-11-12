@@ -1,0 +1,104 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }} „Vorschau laden" erneut klicken, um von vorn zu beginnen.</p>
+{% else %}
+<form id="scan-select-form" hx-post="/gps/geocode/start" hx-target="#file-list" hx-indicator="#geocode-spinner">
+  <input type="hidden" name="all_scanned_rows" value='{{ all_rows_json }}'>
+  {# Carried through to /execute purely so _results.html can offer a "Weiter zu
+     AI-Beschreibung" handoff button prefilled with the folder just processed. #}
+  {% if form_state is defined and form_state.delete_srt %}<input type="hidden" name="delete_srt" value="true">{% endif %}
+  <input type="hidden" name="step_json" value="{{ step_json | default('') }}">
+  <input type="hidden" name="handoff_path" value="{{ handoff_path | default('') }}">
+  <input type="hidden" name="handoff_root_path" value="{{ handoff_root_path | default('') }}">
+
+  {% if notice %}
+  <p class="hint cancelled-info">{{ notice }}</p>
+  {% endif %}
+
+  {% if suggested_tz %}
+  <p class="hint tz-suggestion">
+    💡 Häufigste sicher erkannte Zeitzone in diesem Ordner: <strong>{{ suggested_tz.zone }}</strong>
+    ({{ suggested_tz.count }} von {{ suggested_tz.confident_total }} sicher erkannten Datei(en)) —
+    aktuelle Fallback-Zone ist „{{ form_state.default_tz }}".
+    <button type="button" class="btn-ghost" onclick="
+      document.getElementById('f-default_tz').value = '{{ suggested_tz.zone }}';
+      document.getElementById('browse-form').requestSubmit();
+    ">Übernehmen &amp; neu laden</button>
+  </p>
+  {% endif %}
+
+  {% include "_stepbar.html" %}
+  <div class="list-toolbar">
+    <span>{{ rows|length }} Datei(en) gefunden</span>
+    {% if skipped_done %}<span>{{ skipped_done }} bereits abgeschlossen übersprungen</span>{% endif %}
+    {% if skipped_nogps %}<span>{{ skipped_nogps }} als „ohne GPS“ gemerkt übersprungen</span>{% endif %}
+    {% if marked_nogps %}<span>{{ marked_nogps }} ohne GPS neu vermerkt</span>{% endif %}
+    {% if camera_filtered %}<span>{{ camera_filtered }} durch Kamera-Filter ausgeblendet</span>{% endif %}
+    {% if track_points %}<span>{{ track_points }} Track-Punkt(e) geladen{% if track_windows %} ({{ track_windows }} Abruf{{ "e" if track_windows != 1 else "" }} je Quelle){% endif %}</span>{% endif %}
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>{ if(!c.disabled) c.checked=true })">Alle auswählen</button>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=false)">Keine</button>
+    <label class="checkbox-field inline">
+      <input type="checkbox" name="embed_in_image" value="true" {% if form_state is defined and form_state.embed_in_image %}checked{% endif %}>
+      Bei Bildern zusätzlich direkt einbetten
+    </label>
+  </div>
+
+  {% if track_fetch_errors %}
+  {% for e in track_fetch_errors %}
+  <p class="hint warn">⚠ {{ e }}</p>
+  {% endfor %}
+  {% endif %}
+
+  {% if rows|length == 0 %}
+    {% if skipped_done %}
+    <p class="muted">Alle {{ skipped_done }} gefundenen Datei(en) sind bereits vollständig geotaggt
+      (Country/City schon im .xmp vorhanden). „Bereits abgeschlossene überspringen" deaktivieren, um sie erneut anzuzeigen.</p>
+    {% else %}
+    <p class="muted">Keine passenden Dateien gefunden.</p>
+    {% endif %}
+  {% endif %}
+
+  <div class="rows">
+    {% for r in rows %}
+    <label class="row {% if r.lat is none %}row-warn{% endif %}">
+      <input type="checkbox" class="row-checkbox" name="selected" value="{{ r.path }}"
+             {% if r.lat is none %}disabled{% endif %}
+             {% if selected_paths is not defined or r.path in selected_paths %}checked{% endif %}>
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+          <span class="meta-label">(Aufnahmezeit: {{ r.capture_display }})</span>
+        </div>
+
+        {% if r.lat is not none %}
+        <div class="meta-row">
+          <span class="meta-label">📍 Koordinaten:</span>
+          <span class="geo-coords">{{ "%.5f"|format(r.lat) }}, {{ "%.5f"|format(r.lon) }}</span>
+          <span class="meta-label">
+            {% if r.gps_source == "Datei (vorhandenes GPS)" %}(aus der Datei selbst){% elif r.gps_source == "Sidecar (vorhandenes GPS)" %}(aus dem .xmp-Sidecar){% elif r.gps_source == "DJI-.srt" %}(aus DJI-.srt){% elif r.gps_source.startswith("Fester Ort") %}({{ r.gps_source }}){% else %}
+            (aus {{ r.gps_source }}{% if r.diff_display %}, {{ r.diff_display }} entfernt{% endif %}){% endif %}
+          </span>
+        </div>
+        {% if r.track_note %}<div class="meta-row"><span class="meta-label">⏱ {{ r.track_note }}</span></div>{% endif %}
+        {% if r.override_applied %}
+        <div class="meta-row"><span class="meta-label">↻ überschreibt vorhandenes GPS {{ "%.5f"|format(r.old_lat) }}, {{ "%.5f"|format(r.old_lon) }}</span></div>
+        {% endif %}
+        {% else %}
+        <div class="warn">⚠ Keine GPS-Position gefunden (weder im File noch im Track) — wird beim Geocoding übersprungen.</div>
+        {% endif %}
+        {% if r.rel_dir %}<div class="subdir-badge">📁 {{ r.rel_dir }}</div>{% endif %}
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  {% if rows|length > 0 %}
+  <div class="actions-row sticky-bottom">
+    <button type="submit" class="btn-primary btn-execute">Geocoding starten</button>
+    <span id="geocode-spinner" class="htmx-indicator spinner">wird gestartet…</span>
+  </div>
+  {% endif %}
+</form>
+{% endif %}

@@ -1,0 +1,58 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }} „Scannen" erneut klicken, um von vorn zu beginnen.</p>
+{% else %}
+<form id="delete-form">
+  {% include "_stepbar.html" %}
+  <div class="list-toolbar">
+    <span>{{ rows|length }} kurze(s) Video(s) gefunden{% if scanned_count is not none %} (von {{ scanned_count }} geprüften){% endif %}</span>
+    <span class="meta-label">Schwellwert: &lt;{{ short_video_secs }}s</span>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=true)">Alle auswählen</button>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=false)">Keine</button>
+  </div>
+
+  {% if rows|length == 0 %}
+  <p class="muted">Keine Videos unter {{ short_video_secs }}s gefunden.</p>
+  {% endif %}
+
+  <div class="rows">
+    {% for r in rows %}
+    <label class="row">
+      <input type="checkbox" class="row-checkbox" name="selected" value="{{ r.path }}" checked>
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+          <span class="meta-label">⏱ {{ r.duration_display }}</span>
+        </div>
+        {% if r.rel_dir %}<div class="subdir-badge">📁 {{ r.rel_dir }}</div>{% endif %}
+        <div class="meta-row">
+          <span class="meta-label">
+            Begleitdateien, die mitgelöscht werden:
+            {% if r.companion_count == 0 %}keine{% else %}
+              {% if r.companions.nfo %}.nfo{% endif %}
+              {% if r.companions.poster %}, -poster.jpg{% endif %}
+              {% if r.companions.fanart %}, -fanart.jpg{% endif %}
+              {% if r.companions.thumb %}, -thumb.jpg{% endif %}
+              {% if r.companions.xmp %}, .xmp{% endif %}
+            {% endif %}
+          </span>
+        </div>
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  {% if rows|length > 0 %}
+  <div class="actions-row sticky-bottom">
+    <button type="button" class="btn-danger"
+            hx-post="/shortvideos/delete" hx-include="closest form" hx-target="#results-panel" hx-indicator="#delete-spinner"
+            hx-confirm="Ausgewählte Videos UNTER {{ short_video_secs }} Sekunden inkl. .nfo/.jpg/.xmp-Begleitdateien endgültig löschen (ein geteiltes folder.jpg wird nie mitgelöscht)? Dies kann nicht rückgängig gemacht werden.">
+      🗑 Ausgewählte Videos löschen
+    </button>
+    <span id="delete-spinner" class="htmx-indicator spinner">wird gelöscht…</span>
+  </div>
+  {% endif %}
+</form>
+{% endif %}

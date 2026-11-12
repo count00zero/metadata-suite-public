@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geo-Overrides</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --fg:#1b1f24; --mut:#6b7280; --line:#d8dce2; --acc:#2563eb; --acc-fg:#fff; --chg:#fff4d6; --chg-line:#e0a800; --ok:#137333; --err:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14171b; --card:#1d2127; --fg:#e6e8eb; --mut:#98a1ad; --line:#363c45; --acc:#5b8def; --acc-fg:#0b0d10; --chg:#3a3115; --chg-line:#b98a00; --ok:#6fcf8a; --err:#ff8a80; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 4px 0 14px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:14px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input[type=text], input[type=number], input[type=password] { padding:7px 9px; border:1px solid var(--line); border-radius:7px; background:var(--bg); color:var(--fg); font:inherit; min-width:0; }
+  input.wide { flex:1 1 320px; }
+  button { padding:7px 13px; border:1px solid var(--line); border-radius:7px; background:var(--card); color:var(--fg); font:inherit; cursor:pointer; }
+  button.primary { background:var(--acc); color:var(--acc-fg); border-color:var(--acc); }
+  button.small { padding:3px 8px; font-size:13px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .hint { color:var(--mut); font-size:13px; }
+  .msg { margin-top:8px; font-size:14px; } .msg.ok { color:var(--ok); } .msg.err { color:var(--err); }
+  .grid { display:grid; grid-template-columns: 150px 1fr auto; gap:6px 8px; align-items:center; }
+  .grid label { color:var(--mut); font-size:13px; }
+  .grid .orig { grid-column: 2 / 4; font-size:12px; color:var(--mut); margin:-3px 0 4px; min-height:0; }
+  .grid input { width:100%; }
+  .changed { background:var(--chg); border-color:var(--chg-line) !important; }
+  .cols { display:grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap:14px; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr auto; } .grid label { grid-column: 1 / 3; } .grid .orig { grid-column: 1 / 3; } .cols { grid-template-columns: 1fr; } }
+  .cands button { display:block; width:100%; text-align:left; margin-bottom:5px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td, th { text-align:left; padding:6px 8px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mut); font-weight:600; font-size:12px; border-top:0; }
+  a { color:var(--acc); }
+  .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:99px; border:1px solid var(--line); color:var(--mut); margin-right:4px; }
+  #map { height:420px; border:1px solid var(--line); border-radius:8px; }
+  .vtx { width:12px; height:12px; background:#fff; border:2px solid #d9480f; border-radius:3px; }
+  .details { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:4px 22px; }
+  .details .d { display:grid; grid-template-columns: 120px 1fr; gap:8px; padding:4px 0; border-top:1px solid var(--line); font-size:14px; }
+  .details .d b { color:var(--mut); font-weight:600; font-size:12px; padding-top:2px; }
+  [hidden] { display:none !important; }
+</style>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+</head>
+<body>
+<main>
+  <h1>Geo-Overrides</h1>
+
+  <div class="card" id="authcard" hidden>
+    <h2>Token</h2>
+    <div class="row"><input type="password" id="token" placeholder="GEO_SERVICE_TOKEN" class="wide"><button id="tokenok">Übernehmen</button></div>
+  </div>
+
+  <div class="card">
+    <h2>1 · Adresse oder Koordinaten</h2>
+    <form class="row" id="searchform">
+      <input type="text" id="q" class="wide" placeholder="z. B. Beispielgasse 20, Musterdorf   oder   48.1454285, 16.3257166" autofocus>
+      <button class="primary" type="submit">Nachschlagen</button>
+    </form>
+    <div class="hint" style="margin-top:6px">Es werden dieselben Quellen wie im Normalbetrieb verwendet (Cache → Geocoder, Höhe, Zeitzone). Ein bestehender Override an dieser Stelle wird gleich mitgeladen.</div>
+    <div class="cands" id="cands" style="margin-top:8px"></div>
+    <div class="msg" id="searchmsg"></div>
+  </div>
+
+  <div class="card" id="mapcard" hidden>
+    <h2>Karte <span class="hint">· Klick setzt den Punkt (Marker ist verschiebbar), Kreis = Radius, Fläche = beliebiges Polygon</span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <button type="button" class="small" id="m-radius">Radius auf Karte setzen</button>
+      <button type="button" class="small" id="m-poly">Fläche zeichnen</button>
+      <button type="button" class="small" id="m-polydone" hidden>Fläche fertig</button>
+      <button type="button" class="small" id="m-polyclear" hidden>Fläche entfernen</button>
+      <label class="hint"><input type="checkbox" id="m-all" checked> vorhandene Overrides zeigen</label>
+      <span class="hint" id="m-info"></span>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <div class="card" id="detailcard" hidden>
+    <h2>Details zu diesem Punkt <span class="hint" id="detailpos"></span></h2>
+    <div class="details" id="details"></div>
+  </div>
+
+  <div class="card" id="editor" hidden>
+    <h2>2 · Werte überschreiben <span class="hint">(gelb = weicht vom Original ab, ↺ = Original zurückholen; nur gelbe Felder werden gespeichert)</span></h2>
+    <div class="row" style="margin-bottom:12px">
+      <label class="hint">Breite <input type="number" step="any" id="lat" style="width:130px"></label>
+      <label class="hint">Länge <input type="number" step="any" id="lng" style="width:130px"></label>
+      <label class="hint">Radius (m) <input type="number" min="1" step="1" id="radius" style="width:80px"></label>
+      <span class="hint" id="areainfo"></span>
+      <label class="hint">ID <input type="text" id="oid" style="width:210px"></label>
+      <a id="osm" href="#" target="_blank" rel="noopener" class="hint">auf Karte ansehen</a>
+    </div>
+    <div class="row" style="margin-bottom:12px"><label class="hint" style="flex:1">Notiz <input type="text" id="note" class="wide" style="width:100%"></label></div>
+    <div class="row" style="margin-bottom:12px" id="placerow">
+      <span class="hint"><b>Mein Ort</b> (optional – erscheint in der Orteliste des GPS-Sidecars):</span>
+      <label class="hint">Name <input type="text" id="pname" style="width:200px" placeholder="z. B. Omas Haus"></label>
+      <label class="hint">Art <input type="text" id="pkind" list="pkinds" style="width:130px" placeholder="Eigener Ort"></label>
+      <datalist id="pkinds"><option value="Zuhause"><option value="Familie"><option value="Arbeit"><option value="Eigener Ort"></datalist>
+      <label class="hint"><input type="checkbox" id="ppoi"> auch als „Sehenswürdigkeit in der Nähe“ nennen</label>
+    </div>
+    <div class="cols">
+      <div><h2>Adresse <span class="tag">/addressJSON</span></h2><div class="grid" id="g-address"></div></div>
+      <div><h2>Ort für Sidecar/NFO <span class="tag">/reverse, /context</span></h2><div class="grid" id="g-reverse"></div></div>
+      <div><h2>Höhe <span class="tag">/elevation, /srtm3</span></h2><div class="grid" id="g-elevation"></div>
+        <div class="hint" id="tzinfo" style="margin-top:10px"></div></div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="save">In Overrides-Datei speichern</button>
+      <button id="clear">Alle Änderungen zurücksetzen</button>
+      <span class="hint" id="filehint"></span>
+    </div>
+    <div class="msg" id="savemsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Vorhandene Overrides <span class="hint" id="listfile"></span></h2>
+    <table><thead><tr><th>ID</th><th>Position</th><th>Gebiet</th><th>Inhalt</th><th></th></tr></thead><tbody id="list"></tbody></table>
+    <div class="hint" id="empty" hidden>Noch keine Overrides.</div>
+  </div>
+</main>
+
+<script>window.GEO_UI = /*GEO_UI_CONFIG*/{};</script>
+<script>
+"use strict";
+const ADDRESS = [["street","Straße"],["houseNumber","Hausnummer"],["postalcode","PLZ"],["placename","Ortsname / Objekt"],["adminCode1","Bundesland-Code"],["adminName1","Bundesland"],["countryCode","Ländercode"]];
+const REVERSE = [["country","Land"],["country_a","Ländercode (3)"],["state","Bundesland"],["county","Bezirk / Landkreis"],["city","Stadt / Gemeinde"],["locality","Ortsteil / Objekt"],["street","Straße"],["sublocation","Sublocation (Anzeige)"],["label","Label (Anzeige)"]];
+const $ = id => document.getElementById(id);
+let token = "";
+try { token = sessionStorage.getItem("geo-token") || ""; } catch (e) {}
+const urlTok = new URLSearchParams(location.search).get("token"); if (urlTok) token = urlTok;
+let raw = null, loadedOverride = null;
+const API = window.GEO_API_BASE || "";      // set when embedded in the metadata suite (it proxies the calls)
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({ "Accept": "application/json" }, opts.headers || {});
+  if (token) headers["X-Api-Key"] = token;
+  const r = await fetch(API + path, Object.assign({}, opts, { headers }));
+  if (r.status === 401) { $("authcard").hidden = false; throw new Error("Token fehlt oder ist falsch (oben eintragen)."); }
+  let data = null; try { data = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((data && (data.detail && (data.detail.error || data.detail) || data.error)) || ("HTTP " + r.status));
+  return data;
+}
+function msg(el, text, kind) { el.textContent = text || ""; el.className = "msg" + (kind ? " " + kind : ""); }
+const s = v => (v === null || v === undefined) ? "" : String(v);
+
+// ---- step 1: parse input, search if it is an address
+const COORD = /^\s*(-?\d{1,2}(?:[.,]\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:[.,]\d+)?)\s*$/;
+$("searchform").addEventListener("submit", async ev => {
+  ev.preventDefault(); $("cands").innerHTML = ""; msg($("searchmsg"), "");
+  const q = $("q").value.trim(); if (!q) return;
+  const m = q.match(COORD);
+  try {
+    if (m) { await lookup(parseFloat(m[1].replace(",", ".")), parseFloat(m[2].replace(",", "."))); return; }
+    msg($("searchmsg"), "Suche …");
+    const d = await api("/searchJSON?maxRows=8&q=" + encodeURIComponent(q));
+    const rows = (d.geonames || []).filter(g => g.lat !== undefined && g.lng !== undefined);
+    if (d.status) throw new Error(d.status.message);
+    if (!rows.length) { msg($("searchmsg"), "Nichts gefunden – Koordinaten direkt eingeben?", "err"); return; }
+    if (rows.length === 1) { await lookup(+rows[0].lat, +rows[0].lng); return; }
+    msg($("searchmsg"), "Treffer wählen:");
+    rows.forEach(g => {
+      const b = document.createElement("button"); b.type = "button";
+      b.textContent = [g.name, g.adminName1, g.countryName].filter(Boolean).join(", ") + "  (" + (+g.lat).toFixed(5) + ", " + (+g.lng).toFixed(5) + ")";
+      b.onclick = () => { $("cands").innerHTML = ""; msg($("searchmsg"), ""); lookup(+g.lat, +g.lng).catch(e => msg($("searchmsg"), e.message, "err")); };
+      $("cands").appendChild(b);
+    });
+  } catch (e) { msg($("searchmsg"), e.message, "err"); }
+});
+
+// ---- step 2: look everything up, build the editor
+async function lookup(lat, lng, keepOverride, opts) {
+  opts = opts || {};
+  msg($("searchmsg"), "Hole Daten …");
+  const d = await api("/overrides/lookup?lat=" + lat + "&lng=" + lng);
+  raw = d.raw; loadedOverride = keepOverride || d.override || null;
+  const ov = loadedOverride;
+  $("lat").value = ov ? ov.lat : lat; $("lng").value = ov ? ov.lng : lng;
+  $("radius").value = ov ? ov.radius_m : 25;
+  poly = ov && ov.polygon ? ov.polygon.map(p => [p[0], p[1]]) : []; mode = "point";
+  $("oid").value = ov ? ov.id : suggestId(d);
+  $("oid").dataset.existing = ov ? "1" : "";
+  $("note").value = ov && ov.note ? ov.note : "";
+  const pl = ov && ov.place || {};
+  $("pname").value = pl.name || ""; $("pkind").value = pl.kind || ""; $("ppoi").checked = !!pl.poi;
+  build("g-address", ADDRESS, raw.address || {}, ov && ov.address || {});
+  build("g-reverse", REVERSE, raw.reverse || {}, ov && ov.reverse || {});
+  build("g-elevation", [["elevation", "Höhe (m)"]], { elevation: raw.elevation === null ? "" : raw.elevation }, ov && ov.elevation !== undefined ? { elevation: ov.elevation } : {}, d.raw.elevation_source);
+  const tz = raw.timezone;
+  $("tzinfo").textContent = tz ? "Zeitzone (nur Info): " + tz.timezoneId + (tz.countryName ? " · " + tz.countryName : "") + " · UTC" + (tz.gmtOffset >= 0 ? "+" : "") + tz.gmtOffset : "";
+  const errs = Object.entries(d.errors || {}).map(([k, v]) => k + ": " + v);
+  msg($("searchmsg"), (ov ? "Bestehender Override „" + ov.id + "“ geladen. " : "") + (errs.length ? "Hinweis – nicht erreichbar: " + errs.join("; ") + " (Felder können trotzdem von Hand gefüllt werden)." : ""), errs.length ? "err" : "");
+  msg($("savemsg"), "");
+  $("editor").hidden = false; updateOsm(); syncMap(true);
+  showDetails(d, lat, lng);
+  if (!opts.noScroll) $("editor").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+// ---- "Details zu diesem Punkt": what the service knows about the clicked position (height, zone, sun, moon, weather, country, sights)
+function detailRow(box, label, text) {
+  if (text === "" || text === null || text === undefined) return null;
+  const r = document.createElement("div"); r.className = "d";
+  const b = document.createElement("b"); b.textContent = label;
+  const v = document.createElement("div"); v.textContent = text;
+  r.append(b, v); box.appendChild(r); return v;
+}
+const join = (...xs) => xs.filter(x => x !== "" && x !== null && x !== undefined).join(" · ");
+let detailSeq = 0;
+function showDetails(d, lat, lng) {
+  const box = $("details"); box.innerHTML = ""; $("detailcard").hidden = false;
+  $("detailpos").textContent = "· " + (+lat).toFixed(6) + ", " + (+lng).toFixed(6);
+  const r = d.raw || {}, rv = r.reverse || {}, ad = r.address || {}, tz = r.timezone;
+  detailRow(box, "Ort", join(rv.country, rv.state, rv.county, rv.city, rv.locality, rv.street));
+  detailRow(box, "Adresse", join([ad.street, ad.houseNumber].filter(Boolean).join(" "), [ad.postalcode, ad.placename].filter(Boolean).join(" ")));
+  if (r.elevation !== null && r.elevation !== undefined) detailRow(box, "Höhe", Math.round(r.elevation) + " m ü. M." + (r.elevation_source ? "  (" + r.elevation_source + ")" : ""));
+  else detailRow(box, "Höhe", "keine Höhendaten für diesen Punkt");
+  if (tz) {
+    const off = v => (v >= 0 ? "+" : "") + v;
+    detailRow(box, "Zeitzone", join(tz.timezoneId, "UTC" + off(tz.gmtOffset) + (tz.dstOffset !== tz.gmtOffset ? " (Sommerzeit UTC" + off(tz.dstOffset) + ")" : ""), tz.countryName));
+    detailRow(box, "Lokale Zeit", tz.time);
+    detailRow(box, "Sonne heute", join(tz.sunrise ? "Aufgang " + tz.sunrise.slice(11) : "", tz.sunset ? "Untergang " + tz.sunset.slice(11) : ""));
+  }
+  if (d.override) detailRow(box, "Override", join(d.override.id, d.override.polygon ? "Fläche" : "Radius " + d.override.radius_m + " m", d.override.note));
+  const wait = detailRow(box, "Weitere Daten", "lade …");
+  const seq = ++detailSeq;
+  api("/context?lat=" + lat + "&lon=" + lng + "&time=" + Math.floor(Date.now() / 1000) + "&trip=false").then(c => {
+    if (seq !== detailSeq) return;                      // another point was clicked meanwhile
+    wait.parentNode.remove();
+    const dl = c.daylight || {}, mo = c.moon || {}, w = c.weather || {}, ci = c.country_info || {};
+    detailRow(box, "Tageslicht", join(dl.label, dl.elevation !== undefined ? "Sonnenhöhe " + dl.elevation + "°" : ""));
+    detailRow(box, "Mond", mo.label ? join(mo.label, mo.age_days !== undefined ? "Alter " + mo.age_days + " Tage" : "") : "");
+    detailRow(box, "Heute", join(c.weekday_de, c.season_de, c.holiday ? "Feiertag: " + c.holiday.name : ""));
+    if (w.summary_de) detailRow(box, "Wetter jetzt", join(w.summary_de, w.temp_c !== null && w.temp_c !== undefined ? w.temp_c + " °C" : "", w.wind_kmh !== null && w.wind_kmh !== undefined ? "Wind " + w.wind_kmh + " km/h" : "", w.precip_mm ? w.precip_mm + " mm Niederschlag" : ""));
+    if (ci.text_de) detailRow(box, "Land", join(ci.name, ci.continent, ci.text_de));
+    if (c.top_sight) detailRow(box, "Top-Sehenswürdigkeit", join(c.top_sight.name, c.top_sight.kind, c.top_sight.distance_m !== undefined ? c.top_sight.distance_m + " m" : ""));
+    if ((c.pois || []).length) detailRow(box, "In der Nähe", c.pois.map(p => p.name + (p.distance_m !== undefined ? " (" + p.distance_m + " m)" : "")).join(", "));
+  }).catch(() => { if (seq === detailSeq && wait.parentNode) wait.textContent = "nicht verfügbar"; });
+}
+function suggestId(d) {
+  const a = (d.raw.address || {}), r = (d.raw.reverse || {});
+  const base = (a.placename || r.locality || r.city || "").toString().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return (base || "punkt") + "-" + (+d.lat).toFixed(4) + "_" + (+d.lng).toFixed(4);
+}
+function build(gridId, fields, rawVals, ovVals, note) {
+  const g = $(gridId); g.innerHTML = "";
+  fields.forEach(([key, label]) => {
+    const orig = s(rawVals[key]);
+    const has = Object.prototype.hasOwnProperty.call(ovVals, key);
+    const l = document.createElement("label"); l.textContent = label;
+    const i = document.createElement("input"); i.type = "text"; i.dataset.key = key; i.dataset.orig = orig; i.value = has ? s(ovVals[key]) : orig;
+    if (has) i.dataset.had = "1";          // part of the stored override: kept on save unless the user edits/resets it
+    const b = document.createElement("button"); b.type = "button"; b.className = "small"; b.title = "Original zurückholen"; b.textContent = "↺";
+    const o = document.createElement("div"); o.className = "orig"; o.textContent = "Original: " + (orig === "" ? "–" : orig) + (note && key === "elevation" ? "  (" + note + ")" : "");
+    const mark = () => { i.classList.toggle("changed", i.value !== i.dataset.orig); b.disabled = i.value === i.dataset.orig && !(i.dataset.had && !i.dataset.touched); };
+    i.addEventListener("input", () => { i.dataset.touched = "1"; mark(); });
+    b.onclick = () => { i.value = i.dataset.orig; i.dataset.touched = "1"; mark(); }; mark();
+    g.append(l, i, b, o);
+  });
+}
+function patch(gridId) {
+  const out = {};
+  document.querySelectorAll("#" + gridId + " input").forEach(i => { if (i.value !== i.dataset.orig || (i.dataset.had && !i.dataset.touched)) out[i.dataset.key] = i.value; });
+  return out;
+}
+function updateOsm() { $("osm").href = "https://www.openstreetmap.org/?mlat=" + $("lat").value + "&mlon=" + $("lng").value + "#map=18/" + $("lat").value + "/" + $("lng").value; }
+["lat", "lng"].forEach(id => $(id).addEventListener("input", updateOsm));
+$("clear").onclick = () => { if (!raw) return; build("g-address", ADDRESS, raw.address || {}, {}); build("g-reverse", REVERSE, raw.reverse || {}, {}); build("g-elevation", [["elevation", "Höhe (m)"]], { elevation: raw.elevation === null ? "" : raw.elevation }, {}, raw.elevation_source); msg($("savemsg"), "Zurückgesetzt (noch nicht gespeichert)."); };
+
+// ---- step 3: save
+$("save").onclick = async () => {
+  const lat = parseFloat($("lat").value), lng = parseFloat($("lng").value), radius = parseFloat($("radius").value);
+  if (!isFinite(lat) || !isFinite(lng)) return msg($("savemsg"), "Breite/Länge fehlen.", "err");
+  const item = { id: $("oid").value.trim(), lat, lng, radius_m: isFinite(radius) && radius > 0 ? radius : 25 };
+  if ($("note").value.trim()) item.note = $("note").value.trim();
+  if ($("pname").value.trim()) item.place = { name: $("pname").value.trim(), kind: $("pkind").value.trim() || "Eigener Ort", poi: $("ppoi").checked };
+  if (poly.length >= 3) item.polygon = poly.map(p => [+p[0].toFixed(7), +p[1].toFixed(7)]);
+  else if (poly.length) return msg($("savemsg"), "Die Fläche braucht mindestens 3 Punkte (oder „Fläche entfernen“).", "err");
+  const a = patch("g-address"), r = patch("g-reverse"), e = patch("g-elevation");
+  if (Object.keys(a).length) item.address = a;
+  if (Object.keys(r).length) item.reverse = r;
+  if (e.elevation !== undefined && e.elevation !== "") { const n = parseFloat(e.elevation.replace(",", ".")); if (!isFinite(n)) return msg($("savemsg"), "Höhe ist keine Zahl.", "err"); item.elevation = n; }
+  if (!item.address && !item.reverse && item.elevation === undefined && !item.place) return msg($("savemsg"), "Nichts geändert – ein Eintrag braucht ein überschriebenes Feld (gelb), z. B. Ortsname oder Höhe, oder einen Namen unter „Mein Ort“.", "err");
+  if (!item.id) return msg($("savemsg"), "Bitte eine ID vergeben.", "err");
+  try {
+    const saved = await api("/overrides", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item) });
+    msg($("savemsg"), "Gespeichert als „" + saved.id + "“ – gilt sofort (Cache bleibt unverändert).", "ok");
+    $("oid").dataset.existing = "1"; refreshList();
+  } catch (err) { msg($("savemsg"), err.message, "err"); }
+};
+
+// ---- list
+async function refreshList() {
+  try {
+    const d = await api("/overrides");
+    $("listfile").textContent = "· " + d.file + (d.error ? " · FEHLER in Datei: " + d.error : "");
+    $("filehint").textContent = "Datei: " + d.file;
+    ovList = d.overrides; drawOverrides();
+    const body = $("list"); body.innerHTML = "";
+    $("empty").hidden = d.overrides.length > 0;
+    d.overrides.forEach(o => {
+      const tr = document.createElement("tr");
+      const parts = ["address", "reverse"].filter(k => o[k]).map(k => `<span class="tag">${k}</span>` + Object.entries(o[k]).map(([a, b]) => esc(a) + "=" + esc(b)).join(", "));
+      if (o.place) parts.push('<span class="tag">Mein Ort</span>' + esc(o.place.name) + " (" + esc(o.place.kind) + (o.place.poi ? ", Sehenswürdigkeit" : "") + ")");
+      if (o.elevation !== undefined) parts.push('<span class="tag">elevation</span>' + esc(o.elevation) + " m");
+      tr.innerHTML = `<td>${esc(o.id)}${o.note ? '<div class="hint">' + esc(o.note) + "</div>" : ""}</td><td>${(+o.lat).toFixed(5)}, ${(+o.lng).toFixed(5)}</td><td>${o.polygon ? "Fläche (" + o.polygon.length + " Punkte)" : o.radius_m + " m"}</td><td>${parts.join("<br>")}</td><td></td>`;
+      const td = tr.lastElementChild;
+      const bl = document.createElement("button"); bl.className = "small"; bl.textContent = "Bearbeiten";
+      bl.onclick = () => lookup(o.lat, o.lng, o).catch(e => msg($("searchmsg"), e.message, "err"));
+      const bd = document.createElement("button"); bd.className = "small"; bd.textContent = "Löschen"; bd.style.marginLeft = "4px";
+      bd.onclick = async () => { if (!confirm("Override „" + o.id + "“ löschen?")) return; try { await api("/overrides/" + encodeURIComponent(o.id), { method: "DELETE" }); refreshList(); } catch (e) { alert(e.message); } };
+      td.append(bl, bd); body.appendChild(tr);
+    });
+  } catch (e) { $("listfile").textContent = "· " + e.message; }
+}
+function esc(v) { return s(v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+$("tokenok").onclick = () => { token = $("token").value.trim(); try { sessionStorage.setItem("geo-token", token); } catch (e) {} $("authcard").hidden = true; refreshList(); };
+
+// ---- map (Leaflet from this service, raster tiles from your tileserver-GL: GEO_TILE_URL)
+const CFG = window.GEO_UI || {};
+let map = null, marker = null, circle = null, polyShape = null, vtx = [], poly = [], mode = "point", ovList = [], ovGroup = null;
+function loadLeaflet() {
+  return new Promise((res, rej) => {
+    const base = API + "/ui-assets/leaflet/";
+    const l = document.createElement("link"); l.rel = "stylesheet"; l.href = base + "leaflet.css"; document.head.appendChild(l);
+    const sc = document.createElement("script"); sc.src = base + "leaflet.js";
+    sc.onload = () => res(base); sc.onerror = () => rej(new Error("Kartenbibliothek nicht ladbar")); document.head.appendChild(sc);
+  });
+}
+const unsaved = () => !!document.querySelector("#editor input.changed") && !$("editor").hidden;
+function curLL() { const a = parseFloat($("lat").value), b = parseFloat($("lng").value); return isFinite(a) && isFinite(b) ? [a, b] : null; }
+function mapInfo() {
+  $("m-info").textContent = mode === "poly" ? "Fläche: Karte anklicken, um Eckpunkte zu setzen (Rechtsklick auf Punkt = löschen), dann „Fläche fertig“."
+    : mode === "radius" ? "Jetzt auf die Karte klicken: Abstand zum Marker wird der Radius." : "";
+  $("m-polydone").hidden = $("m-polyclear").hidden = !(mode === "poly" || poly.length);
+  $("m-polydone").hidden = mode !== "poly";
+  $("m-poly").disabled = $("m-radius").disabled = false;
+  $("radius").disabled = poly.length >= 3;
+  $("areainfo").textContent = poly.length >= 3 ? "Gebiet = Fläche mit " + poly.length + " Punkten (Radius gilt nicht)" : "";
+}
+function syncMap(pan) {
+  if (!map) return;
+  const ll = curLL();
+  if (ll) {
+    if (!marker) {
+      marker = L.marker(ll, { draggable: true }).addTo(map);
+      marker.on("dragend", () => {
+        const p = marker.getLatLng();
+        if (unsaved() && !confirm("Ungespeicherte Änderungen verwerfen?")) { syncMap(false); return; }
+        lookup(+p.lat.toFixed(7), +p.lng.toFixed(7), null, { noScroll: true }).catch(e => msg($("searchmsg"), e.message, "err"));
+      });
+    } else marker.setLatLng(ll);
+    const r = parseFloat($("radius").value);
+    if (circle) { map.removeLayer(circle); circle = null; }
+    if (poly.length < 3 && isFinite(r) && r > 0) circle = L.circle(ll, { radius: r, color: "#2563eb", weight: 2, fillOpacity: 0.12, interactive: false }).addTo(map);
+    if (pan) map.setView(ll, Math.max(map.getZoom(), 17));
+  }
+  drawPoly(); mapInfo();
+}
+function drawPoly() {
+  vtx.forEach(m => map.removeLayer(m)); vtx = [];
+  if (polyShape) { map.removeLayer(polyShape); polyShape = null; }
+  if (!poly.length) return;
+  polyShape = (poly.length >= 3 ? L.polygon(poly, { color: "#d9480f", weight: 2, fillOpacity: 0.15, interactive: false })
+                                : L.polyline(poly, { color: "#d9480f", weight: 2, interactive: false })).addTo(map);
+  poly.forEach((p, i) => {
+    const m = L.marker(p, { draggable: true, icon: L.divIcon({ className: "", html: '<div class="vtx"></div>', iconSize: [12, 12], iconAnchor: [6, 6] }) }).addTo(map);
+    m.on("drag", () => { const q = m.getLatLng(); poly[i] = [q.lat, q.lng]; polyShape.setLatLngs(poly); });
+    m.on("dragend", mapInfo);
+    m.on("contextmenu", () => { poly.splice(i, 1); drawPoly(); syncMap(false); });
+    vtx.push(m);
+  });
+}
+function drawOverrides() {
+  if (!map) return;
+  if (ovGroup) { map.removeLayer(ovGroup); ovGroup = null; }
+  if (!$("m-all").checked) return;
+  ovGroup = L.layerGroup().addTo(map);
+  const st = { color: "#6b7280", weight: 1.5, dashArray: "5 4", fillOpacity: 0.06, interactive: false };
+  ovList.forEach(o => (o.polygon ? L.polygon(o.polygon, st) : L.circle([o.lat, o.lng], Object.assign({ radius: o.radius_m }, st))).addTo(ovGroup));
+}
+function onMapClick(e) {
+  const lat = +e.latlng.lat.toFixed(7), lng = +e.latlng.lng.toFixed(7);
+  if (mode === "poly") { poly.push([lat, lng]); drawPoly(); syncMap(false); return; }
+  if (mode === "radius") {
+    const ll = curLL(); mode = "point";
+    if (!ll) { msg($("searchmsg"), "Erst einen Punkt wählen.", "err"); return mapInfo(); }
+    $("radius").value = Math.max(1, Math.round(map.distance(ll, e.latlng))); syncMap(false); return;
+  }
+  if (unsaved() && !confirm("Ungespeicherte Änderungen verwerfen?")) return;
+  lookup(lat, lng, null, { noScroll: true }).catch(err => msg($("searchmsg"), err.message, "err"));
+}
+async function initMap() {
+  if (!CFG.tileUrl) return;                      // no GEO_TILE_URL: the editor works without a map
+  try { const base = await loadLeaflet(); L.Icon.Default.imagePath = base + "images/"; }
+  catch (e) { msg($("searchmsg"), e.message, "err"); return; }
+  $("mapcard").hidden = false;
+  map = L.map("map").setView([47.5, 14.5], 7);
+  L.tileLayer(CFG.tileUrl, { maxZoom: CFG.maxZoom || 19, attribution: CFG.attribution || "" }).addTo(map);
+  window.geoMap = map;
+  map.on("click", onMapClick);
+  $("m-radius").onclick = () => { if (!curLL()) return msg($("searchmsg"), "Erst einen Punkt wählen (Karte anklicken).", "err"); mode = "radius"; mapInfo(); };
+  $("m-poly").onclick = () => { if (!curLL()) return msg($("searchmsg"), "Erst einen Punkt wählen (Karte anklicken) – er bleibt der Ankerpunkt.", "err"); poly = []; mode = "poly"; drawPoly(); syncMap(false); };
+  $("m-polydone").onclick = () => { mode = "point"; if (poly.length < 3) { poly = []; msg($("searchmsg"), "Eine Fläche braucht mindestens 3 Punkte.", "err"); } drawPoly(); syncMap(false); };
+  $("m-polyclear").onclick = () => { poly = []; mode = "point"; drawPoly(); syncMap(false); };
+  $("m-all").onchange = drawOverrides;
+  ["lat", "lng", "radius"].forEach(id => $(id).addEventListener("change", () => syncMap(id !== "radius")));
+  drawOverrides();
+  if (CFG.home) map.setView(CFG.home, 15);      // open on "Zuhause" (GEO_HOME_LAT/LON or the place of kind Zuhause)
+  else if (ovList.length) { const pts = ovList.map(o => [o.lat, o.lng]); map.fitBounds(pts, { maxZoom: 15, padding: [30, 30] }); }
+  mapInfo();
+}
+refreshList().then(initMap);
+</script>
+</body>
+</html>

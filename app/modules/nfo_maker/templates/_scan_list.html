@@ -1,0 +1,93 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }} „Scannen" erneut klicken, um von vorn zu beginnen.</p>
+{% else %}
+<form id="generate-form" hx-post="/nfo/generate/start" hx-target="#results-panel" hx-indicator="#generate-spinner"
+      hx-include="#browse-form">
+  <input type="hidden" name="all_rows" value='{{ all_rows_json }}'>
+
+  {% include "_stepbar.html" %}
+  <div class="list-toolbar">
+    <span>{{ rows|length }} Video(s) gefunden{% if scanned_path %} unter <code>{{ scanned_path }}</code>{% endif %}</span>
+    {% if mode and mode != "normal" %}<span class="meta-label">Modus: {{ mode }}</span>{% endif %}
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=true)">Alle auswählen</button>
+    <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked=false)">Keine</button>
+    <button type="button" class="btn-ghost"
+            onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked = (c.closest('.row').dataset.needsAttention === 'true'))">
+      ⚠ Nur unvollständige (Ort/AI fehlt) auswählen
+    </button>
+    <button type="button" class="btn-ghost"
+            onclick="document.querySelectorAll('.row-checkbox').forEach(c=>c.checked = (c.closest('.row').dataset.isShort === 'true'))">
+      ⏱ Nur sehr kurze Videos (&lt;{{ short_video_secs }}s) auswählen
+    </button>
+  </div>
+
+  {% if mode == "normal" and existing_count > 0 and not include_existing %}
+  <p class="hint">
+    {{ existing_count }} weitere Video(s) in diesem Pfad haben bereits eine .nfo und werden hier nicht angezeigt.
+    <button type="button" class="btn-ghost"
+            onclick="document.getElementById('f-include_existing').value='true'; document.getElementById('browse-form').requestSubmit();">
+      Weiter scannen, um existierende .nfo-Dateien zu finden
+    </button>
+  </p>
+  {% endif %}
+
+  {% if info_message %}<p class="hint">{{ info_message }}</p>{% endif %}
+
+  {% if rows|length == 0 %}
+  <p class="muted">Keine passenden Videos gefunden.</p>
+  {% endif %}
+
+  <div class="rows">
+    {% for r in rows %}
+    <label class="row {% if r.would_skip %}row-warn{% endif %}"
+           data-needs-attention="{{ 'true' if r.needs_attention else 'false' }}"
+           data-is-short="{{ 'true' if r.is_short else 'false' }}">
+      <input type="checkbox" class="row-checkbox" name="selected" value="{{ r.path }}" {% if not r.would_skip %}checked{% endif %}>
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+          <span class="meta-label">({{ r.duration_display }}, {{ r.size_display }}, {{ r.vsource }})</span>
+        </div>
+        {% if r.rel_dir %}<div class="subdir-badge">📁 {{ r.rel_dir }}</div>{% endif %}
+        {% if r.is_short %}
+        <div class="warn">⏱ sehr kurz ({{ r.duration_display }}) -- Kandidat für „Ausgewählte kurze Videos löschen" unten.</div>
+        {% endif %}
+        {% if r.meta_error %}
+        <div class="warn">⚠ {{ r.meta_error }}</div>
+        {% endif %}
+        {% if r.existing_nfo %}
+        <div class="warn">⚠ <code>{{ r.filename }}.nfo</code> existiert bereits{% if r.protected_by_older %} und ist durch -O/--older geschützt{% endif %} — wird ohne „überschreiben" übersprungen.</div>
+        {% endif %}
+        {% if r.geo_exists %}
+        <div class="meta-row"><span class="meta-label">📍 {{ r.geo_summary }}</span></div>
+        {% else %}
+        <div class="meta-row"><span class="meta-label">Kein .xmp-Sidecar -- kein Ort im Plot.</span></div>
+        {% endif %}
+        {% if r.ai_description %}
+        <div class="source-badge">{% if r.ai_garbled %}⚠ AI-Beschreibung im Sidecar sieht garbled aus -- wird nicht übernommen{% else %}✓ AI-Beschreibung im Sidecar gefunden{% endif %}</div>
+        {% endif %}
+        {% if r.needs_attention_reasons %}
+        <div class="warn">⚠ {{ r.needs_attention_reasons|join(", ") }}</div>
+        {% endif %}
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  {% if rows|length > 0 %}
+  <div class="actions-row sticky-bottom">
+    <button type="submit" class="btn-primary btn-execute" id="exec-btn">NFOs erstellen</button>
+    <span id="generate-spinner" class="htmx-indicator spinner">wird erstellt…</span>
+    <button type="button" class="btn-danger"
+            hx-post="/nfo/delete" hx-include="closest form" hx-target="#results-panel" hx-indicator="#delete-spinner"
+            hx-confirm="Ausgewählte Videos UNTER {{ short_video_secs }} Sekunden inkl. .nfo/.jpg/.xmp-Begleitdateien endgültig löschen? Längere ausgewählte Videos werden ignoriert. Dies kann nicht rückgängig gemacht werden.">
+      🗑 Ausgewählte kurze Videos (&lt;{{ short_video_secs }}s) löschen
+    </button>
+    <span id="delete-spinner" class="htmx-indicator spinner">wird gelöscht…</span>
+  </div>
+  {% endif %}
+</form>
+{% endif %}

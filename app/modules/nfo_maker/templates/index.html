@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NFO Maker — Metadata Suite</title>
+<script defer src="/static/htmx.min.js"></script>
+<script defer src="/static/clear-results.js"></script>
+<script src="/static/safe-observer.js"></script>
+<script defer src="/static/alpine.min.js"></script>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/favicon-192.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>🎬 NFO Maker</h1>
+  <nav class="modules-nav">
+    <a class="module-pill info-pill" href="/" title="Start (Dashboard)" aria-label="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></svg></a>
+    <a class="module-pill" href="/timestamp/">Timestamp</a>
+    <a class="module-pill" href="/gps/">GPS Sidecar</a>
+    <a class="module-pill" href="/gpsfill/">GPS füllen</a>
+    <a class="module-pill" href="/geooverrides/">Geo-Overrides</a>
+    <a class="module-pill" href="/ctxfill/">Kontext nachfüllen</a>
+    <a class="module-pill" href="/ai/">AI-Beschreibung</a>
+    <span class="module-pill active">NFO Maker</span>
+    <a class="module-pill" href="/collage/">Collage</a>
+    <a class="module-pill" href="/mtime/">Datei-Zeitstempel</a>
+    <a class="module-pill" href="/shortvideos/">Kurzvideos löschen</a>
+    <a class="module-pill" href="/year/">Jahreslauf</a>
+    <a class="module-pill info-pill" href="/endpoints/" title="Endpunkte des geo-service (Links mit deinen Beispielorten)" aria-label="Endpunkte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></a>
+    <a class="module-pill info-pill" href="/docs/" title="Dokumentation (README)" aria-label="Dokumentation"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 7.5h6"/><path d="M9.5 11h6"/></svg></a>
+    <a class="module-pill info-pill" href="/info/" title="Info: Versionen, Umgebung, Pfade" aria-label="Info"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></a>
+  </nav>
+</header>
+
+<main x-data="nfoApp()" x-init="initLastDepth(); initLastPath()">
+  <section class="panel">
+    <form id="browse-form" hx-post="/nfo/scan/start" hx-target="#file-list" hx-indicator="#browse-spinner"
+          @submit="selected = {}">
+      <!-- Flipped to "true" by _scan_list.html's "Weiter scannen" button (not a user-facing
+           field) to re-submit the same browse-form and extend the result to videos that
+           already have an .nfo. Always reset to "false" here so a fresh Pfad/Modus/Tiefe
+           change -- a brand new scan -- starts back at stage 1. -->
+      <input type="hidden" name="include_existing" id="f-include_existing" value="false">
+      <input type="hidden" name="handoff_id" value="{{ prefill_handoff_id or '' }}">
+
+      <div class="field-grid">
+        <div class="path-row">
+          <label class="root-folder-field">
+            <span class="label-text">Basis-Ordner
+              <span class="info-icon" tabindex="0" title="Wurzelordner, in dem gesucht wird. Pfad darf nur dieser Ordner selbst oder ein Unterordner davon sein.">ⓘ</span>
+            </span>
+            <select name="root_path" id="root-folder-select" @change="selectRootFolder($event.target)">
+              {% for rf in root_folders %}
+              <option value="{{ rf.path }}"
+                      {% if (prefill_root_path and rf.path == prefill_root_path) or (not prefill_root_path and loop.first) %}selected{% endif %}>{{ rf.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="field-path">
+            <span class="label-text">Pfad
+              <span class="info-icon" tabindex="0" title="Ordner mit Videos (rekursiv bis Tiefe), oder direkt eine einzelne Videodatei.">ⓘ</span>
+            </span>
+            <div class="path-input-row">
+              <input type="text" name="path" id="f-path" required list="path-suggestions"
+                     placeholder="{{ root_folders[0].path if root_folders else '/mnt/NAS/...' }}"
+                     value="{{ prefill_path or (root_folders[0].path if root_folders else (media_root or '')) }}"
+                     hx-get="/nfo/subfolders" hx-trigger="input changed delay:300ms, focus"
+                     hx-target="#path-suggestions" hx-swap="innerHTML"
+                     hx-vals="js:{root_path: document.getElementById('root-folder-select').value}"
+                     @input="onPathInput($event.target)">
+              <button type="button" class="btn-icon" @click="goUpOneLevel()"
+                      title="Eine Ordnerebene nach oben (nie über den Basis-Ordner hinaus)">⬆️</button>
+            </div>
+            <datalist id="path-suggestions"></datalist>
+          </label>
+
+          <label>
+            <span class="label-text">Tiefe
+              <span class="info-icon" tabindex="0" title="Wie viele Ordnerebenen unter Pfad durchsucht werden. 0 = nur der angegebene Ordner selbst, 1-7 = so viele Ebenen darunter.">ⓘ</span>
+            </span>
+            <input type="number" name="depth" id="f-depth" min="0" max="7" value="1" style="width: 5em"
+                   @change="_setLastDepth($event.target.value)">
+          </label>
+        </div>
+
+        <label>
+          <span class="label-text">Modus
+            <span class="info-icon" tabindex="0" title="Normal: alle gefundenen Videos ohne .nfo (oder mit 'überschreiben'). repair-ai: nur Videos, deren .nfo eine garbled AI-Beschreibung enthält. reintegrate-ai: nur Videos, deren .xmp-Sidecar bereits eine saubere AI-Beschreibung hat, die noch nicht im .nfo steht. repair-italic: nur Videos, deren .nfo noch die alte [I]/[/I]-Formatierung hat. repair-missing-ai: nur .nfo ohne jede AI-Beschreibung. repair-missing: .nfo ohne AI-Beschreibung ODER ohne Ort, wenn das .xmp inzwischen GPS hat (nach dem Nachfüllen von GPS/Beschreibungen).">ⓘ</span>
+          </span>
+          <select name="mode" id="f-mode">
+            <option value="normal" selected>Normal</option>
+            <option value="repair-ai">repair-ai (garbled AI-Text reparieren)</option>
+            <option value="reintegrate-ai">reintegrate-ai (saubere AI-Beschreibung nachtragen)</option>
+            <option value="repair-italic">repair-italic (altes [I]/[/I]-Format reparieren)</option>
+            <option value="repair-missing-ai">repair-missing-ai (.nfo ohne AI-Beschreibung)</option>
+            <option value="repair-missing">repair-missing (ohne AI-Beschreibung oder ohne Ort, GPS vorhanden)</option>
+          </select>
+        </label>
+
+        <label>
+          <span class="label-text">Limit (nur repair-Modi)
+            <span class="info-icon" tabindex="0" title="Bearbeitet höchstens so viele Videos pro Lauf (0 = alle). Reparierte .nfo passen beim nächsten Lauf nicht mehr, der Rest kommt dann dran.">ⓘ</span>
+          </span>
+          <input type="number" name="limit" id="f-limit" min="0" value="0">
+        </label>
+
+        <label class="checkbox-field">
+          <input type="checkbox" name="force" id="f-force" value="true">
+          Vorhandene .nfo überschreiben
+          <span class="info-icon" tabindex="0" title="Ohne diese Option wird ein Video, für das schon eine .nfo existiert, übersprungen (unabhängig vom Modus).">ⓘ</span>
+        </label>
+      </div>
+
+      <details class="advanced-settings">
+        <summary>Erweiterte Einstellungen</summary>
+        <div class="field-grid">
+          <label class="checkbox-field">
+            <input type="checkbox" name="force_jpg" id="f-force_jpg" value="true">
+            folder/poster/fanart/thumb.jpg überschreiben
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" name="force_timestamp" id="f-force_timestamp" value="true">
+            Zeitstempel für ALLE passenden Dateien wiederherstellen
+            <span class="info-icon" tabindex="0" title="Nicht nur für Dateien, die dieser Lauf tatsächlich geschrieben hat.">ⓘ</span>
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" name="ai_description_enabled" id="f-ai_description_enabled" value="true"
+                   {% if defaults.ai_description_enabled %}checked{% endif %}>
+            AI-Beschreibung in den Plot übernehmen (falls im .xmp-Sidecar vorhanden)
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" name="skip_location" id="f-skip_location" value="true"
+                   {% if defaults.skip_location %}checked{% endif %}>
+            .xmp-Sidecar gar nicht lesen (-L/--nolocation)
+          </label>
+          <label>
+            <span class="label-text">-O/--older
+              <span class="info-icon" tabindex="0" title="Schützt .nfo-Dateien, die innerhalb der letzten N Tage geändert wurden, vor Regenerierung (0 oder negativ, z.B. -7). Leer = kein Schutz.">ⓘ</span>
+            </span>
+            <input type="number" name="older" id="f-older" max="0" value="{{ defaults.older if defaults.older is not none else '' }}" placeholder="kein Schutz">
+          </label>
+        </div>
+        <p class="hint">Diese Standardwerte kommen aus den <code>NFO_*</code>-Umgebungsvariablen (siehe README).
+        Geo/AI-Daten werden ausschließlich aus einem bereits vorhandenen .xmp-Sidecar gelesen (GPS Sidecar / AI-Beschreibung vorher laufen lassen, falls noch keiner existiert) -- dieses Modul ruft selbst nie GPS- oder AI-Dienste auf.</p>
+      </details>
+
+      <div class="actions-row">
+        <button type="submit" class="btn-primary">Scannen</button>
+        <span id="browse-spinner" class="htmx-indicator spinner">sucht…</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" id="file-list">
+    <p class="muted">Pfad wählen und „Scannen" klicken.</p>
+  </section>
+
+  <section class="panel" id="results-panel"></section>
+</main>
+
+<script>
+function nfoApp() {
+  return {
+    selected: {},
+    _lastPathKey(name) { return 'metadata-suite:lastpath:' + name; },
+    _lastPathFor(name) {
+      try { return localStorage.getItem(this._lastPathKey(name)); } catch (e) { return null; }
+    },
+    _setLastPathFor(name, value) {
+      try { localStorage.setItem(this._lastPathKey(name), value); } catch (e) {}
+    },
+    _clearLastPathFor(name) {
+      try { localStorage.removeItem(this._lastPathKey(name)); } catch (e) {}
+    },
+    _lastRootKey() { return 'metadata-suite:lastroot'; },
+    _lastRoot() {
+      try { return localStorage.getItem(this._lastRootKey()); } catch (e) { return null; }
+    },
+    _setLastRoot(name) {
+      try { localStorage.setItem(this._lastRootKey(), name); } catch (e) {}
+    },
+    _setLastDepth(value) {
+      try { sessionStorage.setItem('metadata-suite:lastdepth', value); } catch (e) {}
+    },
+    initLastDepth() {
+      try {
+        const saved = sessionStorage.getItem('metadata-suite:lastdepth');
+        if (saved) document.getElementById('f-depth').value = saved;
+      } catch (e) {}
+    },
+    selectRootFolder(selectEl, persist = true) {
+      const opt = selectEl.selectedOptions[0];
+      if (!opt) return;
+      const saved = this._lastPathFor(opt.text);
+      document.getElementById('f-path').value = saved || opt.value;
+      document.getElementById('path-suggestions').innerHTML = '';
+      if (persist) this._setLastRoot(opt.text);
+    },
+    onPathInput(inputEl) {
+      const sel = document.getElementById('root-folder-select');
+      const opt = sel.selectedOptions[0];
+      if (!opt) return;
+      const val = inputEl.value.trim();
+      if (val === '') {
+        inputEl.value = opt.value;
+        this._clearLastPathFor(opt.text);
+      } else {
+        this._setLastPathFor(opt.text, val);
+      }
+      this._setLastRoot(opt.text);
+    },
+    goUpOneLevel() {
+      const input = document.getElementById('f-path');
+      const sel = document.getElementById('root-folder-select');
+      const opt = sel.selectedOptions[0];
+      const rootPath = (opt ? opt.value : '').replace(/\/+$/, '');
+      const val = input.value.trim().replace(/\/+$/, '');
+      if (!val || val === rootPath) return;
+      const idx = val.lastIndexOf('/');
+      let parent = idx > 0 ? val.slice(0, idx) : '/';
+      if (!(parent === rootPath || parent.startsWith(rootPath + '/'))) {
+        parent = rootPath;
+      }
+      input.value = parent;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+    initLastPath() {
+      const sel = document.getElementById('root-folder-select');
+      if (!sel) return;
+      {% if prefill_path %}
+      // Arrived via the "Weiter zu NFO Maker" handoff from the AI-Beschreibung module
+      // -- use that path for this one load, remember its Basis-Ordner as the globally
+      // last-used one too, and load the scan right away instead of making the maintainer click
+      // "Scannen" again for the very folder he just finished processing. (x-init runs
+      // initLastDepth() before this, so the restored Tiefe is already in the field by
+      // the time this submits, not the default.)
+      //
+      // IMPORTANT: this x-init code runs synchronously as soon as Alpine's own
+      // <script defer> executes, which happens BEFORE the page's "DOMContentLoaded"
+      // event -- and htmx only wires up #browse-form's hx-post (so submitting it
+      // actually fires an AJAX request instead of a real full-page form submit) once
+      // DOMContentLoaded has fired. Calling requestSubmit() directly here would hit
+      // the form before htmx has attached to it at all, causing a native browser
+      // navigation to a bare, un-styled fragment response instead of an htmx swap --
+      // exactly the "nothing happens, then an empty page" bug the maintainer reported. Waiting
+      // for htmx's own "htmx:load" event (which it fires only after it has finished
+      // processing the page) guarantees the form is already wired up by the time this
+      // actually submits.
+      const opt = sel.selectedOptions[0];
+      if (opt) this._setLastRoot(opt.text);
+      document.body.addEventListener('htmx:load', function () {
+        document.getElementById('browse-form').requestSubmit();
+      }, { once: true });
+      return;
+      {% endif %}
+      const lastRoot = this._lastRoot();
+      if (lastRoot) {
+        const match = Array.from(sel.options).find(o => o.text === lastRoot);
+        if (match) match.selected = true;
+      }
+      this.selectRootFolder(sel, false);
+    },
+  }
+}
+</script>
+</body>
+</html>

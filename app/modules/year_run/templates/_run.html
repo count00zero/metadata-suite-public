@@ -1,0 +1,54 @@
+<div id="year-run"
+     {% if run.status == 'running' %}hx-get="/year/run/{{ run.id }}" hx-trigger="load delay:2s" hx-target="this" hx-swap="outerHTML"{% endif %}>
+  {% if note %}<p class="hint">{{ note }}</p>{% endif %}
+  <div class="progress-panel">
+    <div class="progress-row">
+      <span>
+        {% if run.status == 'running' %}
+          <strong>{{ "Monat" if run.opts.month else "Jahr" }} {{ run.opts.title }}</strong> · Ordner {{ p.folder_index }} / {{ p.folder_total }} ({{ p.phase }}) · {{ p.step }}
+          {% if p.total %} — {{ p.done }} / {{ p.total }}{% endif %}{% if p.current_name %} · {{ p.current_name }}{% endif %}
+        {% elif run.status == 'done' %}✅ <strong>Fertig</strong> — {{ "Monat" if run.opts.month else "Jahr" }} {{ run.opts.title }} in {{ elapsed // 60 }} min {{ elapsed % 60 }} s
+        {% elif run.status == 'cancelled' %}⏹ <strong>Abgebrochen</strong> — {{ "Monat" if run.opts.month else "Jahr" }} {{ run.opts.title }}
+        {% else %}❌ <strong>Fehler</strong>: {{ run.error }}{% endif %}
+      </span>
+      {% if run.status == 'running' %}
+      <button type="button" class="btn-ghost" hx-post="/year/cancel/{{ run.id }}" hx-swap="none"
+              onclick="this.disabled=true; this.textContent='Wird gestoppt…';">Abbrechen</button>
+      {% endif %}
+    </div>
+    <div class="progress-bar"><div class="progress-bar-fill" style="width: {{ p.pct if run.status == 'running' else 100 }}%"></div></div>
+  </div>
+
+  {% if run.status != 'running' and run.fix_pending %}
+  <div class="progress-panel" style="border-color: var(--warn, #d9a441)">
+    <p><strong>⚠ Zeitstempel noch nicht richtig</strong> – {{ run.fix_count }} Datei(en) wurden in diesem Lauf geändert (Sidecars, .nfo, Thumbnails, Medien) und tragen jetzt „heute“ als Änderungszeit.
+       Mit <em>OK</em> werden sie auf ihr Aufnahmedatum zurückgesetzt (Dateiname zuerst, EXIF als Ersatz).</p>
+    <button type="button" class="btn-primary" hx-post="/year/finish/{{ run.id }}" hx-target="#year-run" hx-swap="outerHTML">OK – Zeitstempel richtigstellen</button>
+  </div>
+  {% elif run.fix_done %}
+  <p class="hint">✓ Zeitstempel richtiggestellt: {{ run.fix_done }}</p>
+  {% endif %}
+
+  {% if summary %}
+  <h3>Ergebnis je Schritt</h3>
+  <table class="plain">
+    <thead><tr><th>Ordner</th><th>Schritt</th><th></th><th>Ergebnis</th></tr></thead>
+    <tbody>
+    {% for s in summary %}
+      <tr><td>{{ s.folder }}</td><td>{{ s.step }}</td><td>{{ '✓' if s.ok else '✗' }}</td><td>{{ s.text }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {# The log panel is kept as-is by htmx (hx-preserve) so that closing it, its scroll position and text selection survive the
+     2-second refresh; only the text inside is replaced (out-of-band swaps below). One id per run. #}
+  <details id="yr-log-{{ run.id }}" hx-preserve="true" open style="margin-top: .8rem">
+    <summary>Protokoll (<span id="yr-count-{{ run.id }}">{{ log|length }}</span> Zeilen)</summary>
+    <pre id="yr-pre-{{ run.id }}" class="mono" style="max-height: 24rem; overflow: auto; white-space: pre-wrap">{{ log_text }}</pre>
+  </details>
+  {% if oob %}
+  <span id="yr-count-{{ run.id }}" hx-swap-oob="innerHTML">{{ log|length }}</span>
+  <pre id="yr-pre-{{ run.id }}" hx-swap-oob="innerHTML">{{ log_text }}</pre>
+  {% endif %}
+</div>

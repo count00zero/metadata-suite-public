@@ -1,0 +1,16 @@
+{% if not enabled %}
+<div class="st-card st-off"><strong>geo-service</strong><span>nicht aktiviert (<code>GEO_SERVICE_URL</code> leer) – Orte, Wetter und Höhen kommen dann nur aus den lokalen Ketten.</span></div>
+{% elif not ok %}
+<div class="st-card st-bad"><strong>geo-service</strong><span>nicht erreichbar: {{ error }}</span><code>{{ url }}</code></div>
+{% else %}
+<div class="st-card st-ok"><strong>geo-service</strong><span>läuft{% if version %} · v{{ version }}{% endif %}{% if uptime %} · seit {{ uptime }}{% endif %}</span><code>{{ url }}</code></div>
+<div class="st-card {{ 'st-ok' if weather == 'open-meteo' else 'st-off' }}"><strong>Wetter</strong>
+  <span>{% if weather == 'open-meteo' %}Open-Meteo aktiv{% else %}aus (<code>WEATHER_PROVIDER</code>){% endif %}</span>
+  {% if archive %}<span>Archiv: {{ archive.archived_days }} Tage · {{ archive.cells }} Zellen{% if archive.first_day %}<br>{{ archive.first_day }} bis {{ archive.last_day }}{% endif %}</span>{% endif %}</div>
+<div class="st-card"><strong>Tracks</strong>
+  <span>{% for k, v in tracks.items() %}<span class="chip">{{ k }} {{ '✓' if v else '–' }}</span>{% else %}keine Quelle{% endfor %}</span></div>
+<div class="st-card"><strong>Geocoder</strong>
+  <span>{% for n, v in geocoders %}<span class="chip" title="{{ 'Circuit offen – Pause ' ~ v.get('retry_in_s', 0) ~ ' s' if v.get('open') else 'ok' }}">{{ n }}{% if v.get('open') %} ⚠{% endif %}</span>{% else %}keine konfiguriert{% endfor %}</span></div>
+<div class="st-card"><strong>Meine Orte</strong>
+  <span>{% if places is not none %}{{ places }} Orte{% else %}–{% endif %}{% if overrides is not none %} · {{ overrides }} Overrides{% endif %}</span></div>
+{% endif %}

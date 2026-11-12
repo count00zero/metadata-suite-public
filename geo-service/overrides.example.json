@@ -1,0 +1,20 @@
+[
+  {
+    "id": "volksschule-musterdorf",
+    "note": "OSM calls this 'Veranstaltungshalle', it is the Volksschule",
+    "lat": 48.14543,
+    "lng": 16.32572,
+    "radius_m": 40,
+    "address": { "placename": "Volksschule" },
+    "reverse": { "locality": "Volksschule Musterdorf" },
+    "elevation": 215
+  },
+  {
+    "id": "schulareal-als-flaeche",
+    "note": "polygon instead of a circle: every point inside matches, radius_m is ignored (lat/lng = anchor)",
+    "lat": 48.1455,
+    "lng": 16.3257,
+    "polygon": [[48.1450, 16.3250], [48.1460, 16.3250], [48.1460, 16.3265], [48.1450, 16.3265]],
+    "reverse": { "locality": "Schulareal" }
+  }
+]

@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPS Sidecar — Metadata Suite</title>
+<script defer src="/static/htmx.min.js"></script>
+<script defer src="/static/clear-results.js"></script>
+<script src="/static/safe-observer.js"></script>
+<script defer src="/static/alpine.min.js"></script>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/favicon-192.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>📍 GPS Sidecar</h1>
+  <nav class="modules-nav">
+    <a class="module-pill info-pill" href="/" title="Start (Dashboard)" aria-label="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></svg></a>
+    <a class="module-pill" href="/timestamp/">Timestamp</a>
+    <span class="module-pill active">GPS Sidecar</span>
+    <a class="module-pill" href="/gpsfill/">GPS füllen</a>
+    <a class="module-pill" href="/geooverrides/">Geo-Overrides</a>
+    <a class="module-pill" href="/ctxfill/">Kontext nachfüllen</a>
+    <a class="module-pill" href="/ai/">AI-Beschreibung</a>
+    <a class="module-pill" href="/nfo/">NFO Maker</a>
+    <a class="module-pill" href="/collage/">Collage</a>
+    <a class="module-pill" href="/mtime/">Datei-Zeitstempel</a>
+    <a class="module-pill" href="/shortvideos/">Kurzvideos löschen</a>
+    <a class="module-pill" href="/year/">Jahreslauf</a>
+    <a class="module-pill info-pill" href="/endpoints/" title="Endpunkte des geo-service (Links mit deinen Beispielorten)" aria-label="Endpunkte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></a>
+    <a class="module-pill info-pill" href="/docs/" title="Dokumentation (README)" aria-label="Dokumentation"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 7.5h6"/><path d="M9.5 11h6"/></svg></a>
+    <a class="module-pill info-pill" href="/info/" title="Info: Versionen, Umgebung, Pfade" aria-label="Info"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></a>
+  </nav>
+</header>
+
+<main x-data="gpsApp()" x-init="initLastDepth(); initLastPath()">
+  <section class="panel">
+    <form id="browse-form" hx-post="/gps/browse/start" hx-target="#file-list" hx-indicator="#browse-spinner"
+          @submit="selected = {}">
+      <input type="hidden" name="handoff_id" value="{{ prefill_handoff_id or '' }}">
+
+      <div class="field-grid">
+        <div class="path-row">
+          <label class="root-folder-field">
+            <span class="label-text">Basis-Ordner
+              <span class="info-icon" tabindex="0" title="Wurzelordner, in dem gesucht wird. Pfad darf nur dieser Ordner selbst oder ein Unterordner davon sein. Der zuletzt verwendete Pfad wird sich pro Basis-Ordner gemerkt (geteilt mit dem Timestamp-Modul).">ⓘ</span>
+            </span>
+            <select name="root_path" id="root-folder-select" @change="selectRootFolder($event.target)">
+              {% for rf in root_folders %}
+              <option value="{{ rf.path }}" data-type="{{ rf.type_filter }}"
+                      {% if (prefill_root_path and rf.path == prefill_root_path) or (not prefill_root_path and loop.first) %}selected{% endif %}>{{ rf.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="field-path">
+            <span class="label-text">Pfad
+              <span class="info-icon" tabindex="0" title="Verzeichnis (oder einzelne Datei) innerhalb des Basis-Ordners, das durchsucht wird. Feld leeren stellt den Standard-Pfad wieder her.">ⓘ</span>
+            </span>
+            <div class="path-input-row">
+              <input type="text" name="path" id="f-path" required list="path-suggestions"
+                     placeholder="{{ root_folders[0].path if root_folders else '/mnt/NAS/...' }}"
+                     value="{{ prefill_path or (root_folders[0].path if root_folders else (media_root or '')) }}"
+                     hx-get="/gps/subfolders" hx-trigger="input changed delay:300ms, focus"
+                     hx-target="#path-suggestions" hx-swap="innerHTML"
+                     hx-vals="js:{root_path: document.getElementById('root-folder-select').value}"
+                     @input="onPathInput($event.target)">
+              <button type="button" class="btn-icon" @click="goUpOneLevel()"
+                      title="Eine Ordnerebene nach oben (nie über den Basis-Ordner hinaus)">⬆️</button>
+            </div>
+            <datalist id="path-suggestions"></datalist>
+          </label>
+        </div>
+
+        {% set _selected_rf = (root_folders | selectattr('path', 'equalto', prefill_root_path) | list | first) if prefill_root_path else (root_folders[0] if root_folders else none) %}
+        <input type="hidden" name="type_filter" id="f-type_filter"
+               value="{{ _selected_rf.type_filter if _selected_rf else 'ALL' }}">
+
+        <label>
+          <span class="label-text">Tiefe (0-7)
+            <span class="info-icon" tabindex="0" title="Wie viele Verzeichnisebenen unterhalb von Pfad durchsucht werden.">ⓘ</span>
+          </span>
+          <input type="number" name="depth" id="f-depth" min="0" max="7" value="0" @input="_setLastDepth($event.target.value)">
+        </label>
+
+        <label>
+          <span class="label-text">Fallback-Zone
+            <span class="info-icon" tabindex="0" title="Wie im Timestamp-Modul: IANA-Zeitzone, die zur Bestimmung der Aufnahmezeit verwendet wird, wenn eine Datei kein GPS und keine eigene Zeitzoneninformation hat. Entscheidend dafür, wie genau die Aufnahmezeit mit dem Traccar/Dawarich-Track abgeglichen werden kann.">ⓘ</span>
+          </span>
+          <input type="text" name="default_tz" id="f-default_tz" value="Europe/Vienna">
+        </label>
+
+        {% if geo_cfg.traccar_all_devices %}
+        <fieldset class="geo-source-fieldset">
+          <legend>Traccar-Geräte
+            <span class="info-icon" tabindex="0" title="Bei Dateien ohne eigenes GPS wird der zeitlich nächstgelegene Punkt der hier einzeln angehakten Geräte verwendet (erst ±10 Minuten, dann bis zu ±6 Stunden). Standardmäßig angehakt sind die Geräte aus TRACCAR_DEVICES; zusätzliche, seltener gebrauchte Geräte aus TRACCAR_DEVICES_ADDITIONAL sind mit aufgelistet, aber nicht automatisch angehakt.">ⓘ</span>
+          </legend>
+          <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.traccar-device-cb').forEach(c=>c.checked=true)">Alle</button>
+          <button type="button" class="btn-ghost" onclick="document.querySelectorAll('.traccar-device-cb').forEach(c=>c.checked=false)">Keine</button>
+          {% if not geo_cfg.traccar_url or not geo_cfg.traccar_token %}
+          <span class="muted">(TRACCAR_URL/TRACCAR_TOKEN nicht konfiguriert — Geräte-Auswahl hat keine Wirkung)</span>
+          {% endif %}
+          {% for dev_id, label, checked_default in geo_cfg.traccar_all_devices %}
+          <label class="checkbox-field inline">
+            <input type="checkbox" class="traccar-device-cb" name="traccar_device_ids" value="{{ dev_id }}" {% if checked_default %}checked{% endif %}>
+            {{ label or dev_id }}
+          </label>
+          {% endfor %}
+        </fieldset>
+        {% endif %}
+
+        <fieldset class="geo-source-fieldset">
+          <legend>Weitere GPS-Quellen
+            <span class="info-icon" tabindex="0" title="Wenn eine Datei keine eigene GPS-Position hat und von keinem ausgewählten Traccar-Gerät ein Punkt in der Nähe gefunden wird, werden (falls hier aktiviert) zusätzlich diese Quellen durchsucht. Nicht konfigurierte Quellen sind deaktiviert.">ⓘ</span>
+          </legend>
+          <label class="checkbox-field inline">
+            <input type="checkbox" name="use_dawarich" value="true" {% if geo_cfg.dawarich_configured %}checked{% else %}disabled{% endif %}>
+            Dawarich {% if not geo_cfg.dawarich_configured %}<span class="muted">(nicht konfiguriert)</span>{% endif %}
+          </label>
+          <label class="checkbox-field inline">
+            <input type="checkbox" name="use_dawarich_import" value="true" {% if not geo_cfg.dawarich_import_api_key %}disabled{% endif %}>
+            Dawarich-Archiv {% if not geo_cfg.dawarich_import_api_key %}<span class="muted">(nicht konfiguriert)</span>{% endif %}
+          </label>
+        </fieldset>
+
+        <label>
+          <span class="label-text">Kamera-Modell enthält (optional)
+            <span class="info-icon" tabindex="0" title="Nur Dateien, deren EXIF Make/Model ODER übersetzter Gerätename diesen Text enthält (z.B. &quot;Luna Ultra&quot;, &quot;SM-S921B&quot;). Leer = keine Einschränkung.">ⓘ</span>
+          </span>
+          <input type="text" name="camera_model" id="f-camera_model" placeholder="z.B. Insta360 Luna Ultra">
+        </label>
+
+        <label>
+          <span class="label-text">Fester Ort (optional)
+            <span class="info-icon" tabindex="0" title="Aus „Meine Orte“ (Geo-Overrides, geo-service). Gilt für alle Dateien ohne GPS (bzw. alle, wenn „Vorhandenes GPS überschreiben“ aktiv ist) und ersetzt Track-Abgleich und Reverse-Geocoding.">ⓘ</span>
+          </span>
+          <select name="fixed_location" id="f-fixed_location">
+            <option value="">— keiner —</option>
+            {% for pl in predefined_locations %}<option value="{{ pl.name }}">{{ pl.name }} – {{ pl.label }} ({{ "%.4f"|format(pl.lat) }}, {{ "%.4f"|format(pl.lon) }})</option>{% endfor %}
+          </select>
+        </label>
+
+        <label class="checkbox-field">
+          <input type="checkbox" name="use_dji_srt" id="f-use_dji_srt" value="true" checked>
+          DJI-<code>.srt</code> neben Videos als GPS-Quelle nutzen
+          <span class="info-icon" tabindex="0" title="Liegt neben dem Video eine gleichnamige .srt (DJI-Telemetrie), wird deren erste GPS-Position vor dem Track-Abgleich verwendet.">ⓘ</span>
+        </label>
+        <label class="checkbox-field">
+          <input type="checkbox" name="delete_srt" id="f-delete_srt" value="true" checked>
+          <code>.srt</code> und DJI-<code>.lrf</code> nach erfolgreichem Schreiben löschen
+          <span class="info-icon" tabindex="0" title="Die .srt wird erst gelöscht, nachdem die GPS-Position im .xmp-Sidecar zurückgelesen und bestätigt wurde. Die .lrf (kleine Vorschau-Kopie der DJI-Kamera) hat keinen eigenen Wert und wird gelöscht, sobald das .xmp des Videos geschrieben wurde.">ⓘ</span>
+        </label>
+
+        <label>
+          <span class="label-text">Zeitkorrektur für den Track-Abgleich
+            <span class="info-icon" tabindex="0" title="Die Kamerauhr ging falsch (gegenüber dem GPS-Track): die Position wird zur um diesen Betrag verschobenen Zeit im Track gesucht, z.B. +01:30, -0:05:30, +2h, -90m. Die Aufnahmezeit der Datei bleibt unverändert (dafür gibt es Timestamp &amp; Rename).">ⓘ</span>
+          </span>
+          <input type="text" name="time_shift" id="f-time_shift" value="" placeholder="z.B. +01:30 (leer = keine)" autocomplete="off">
+        </label>
+
+        <label class="checkbox-field">
+          <input type="checkbox" name="regeocode" id="f-regeocode" value="true">
+          Orte bestehender Dateien neu geocodieren
+          <span class="info-icon" tabindex="0" title="Auch Dateien, die schon einen Ort im .xmp haben, werden aufgenommen: Ihre vorhandene GPS-Position bleibt, der Ort (Land, Bundesland, Stadt, Straße …) wird neu abgefragt – am geo-service-Cache vorbei – und überschrieben. Sinnvoll nach einem Update der Ortsdaten oder wenn Namen sich geändert haben. „Bereits fertige überspringen“ wirkt dann nicht. In der Liste steht der bisherige Ort daneben.">ⓘ</span>
+        </label>
+
+        <label class="checkbox-field">
+          <input type="checkbox" name="override_gps_from_track" id="f-override_gps_from_track" value="true">
+          Vorhandenes GPS mit Track/.srt/festem Ort überschreiben
+          <span class="info-icon" tabindex="0" title="Auch Dateien, die schon GPS haben (im Bild und/oder im .xmp), bekommen die Position aus .srt / festem Ort / Traccar-Dawarich-Track. Findet sich dort nichts, bleibt das vorhandene GPS. Bilder: GPS wird zusätzlich direkt ins Bild geschrieben; Videos nur in den Sidecar. „Bereits abgeschlossene überspringen“ wird dabei ignoriert.">ⓘ</span>
+        </label>
+
+        <label class="checkbox-field">
+          <input type="checkbox" name="remember_no_gps" id="f-remember_no_gps" value="true" checked>
+          Dateien ohne GPS merken
+          <span class="info-icon" tabindex="0" title="Findet sich trotz aktivierter Quellen keine Position, wird das im .xmp-Sidecar vermerkt (TransmissionReference=no-gps-found) und die Datei beim nächsten Lauf übersprungen. Wird nur vermerkt, wenn Track-Quellen tatsächlich abgefragt wurden.">ⓘ</span>
+        </label>
+        <label class="checkbox-field">
+          <input type="checkbox" name="retry_no_gps" id="f-retry_no_gps" value="true">
+          Als „ohne GPS“ gemerkte Dateien erneut versuchen
+        </label>
+
+        <label class="checkbox-field">
+          <input type="checkbox" name="skip_already_done" id="f-skip_already_done" value="true" checked>
+          Bereits abgeschlossene überspringen
+          <span class="info-icon" tabindex="0" title="Dateien, deren .xmp-Sidecar bereits Country/City enthält, werden nicht erneut reverse-geocodiert (spart Anfragen an Photon/Nominatim/Pelias). Deaktivieren, um eine Datei erneut zu verarbeiten.">ⓘ</span>
+        </label>
+
+        <label class="checkbox-field">
+          <input type="checkbox" name="embed_in_image" id="f-embed_in_image" value="true">
+          Bei Bildern zusätzlich direkt einbetten
+          <span class="info-icon" tabindex="0" title="Standardmäßig AUS: schreibt wie immer trotzdem immer in den .xmp-Sidecar, nur das direkte Einbetten ins Bild selbst ist optional. Für ein Foto ist GPS Sidecar im Standard-Flow meist NICHT der letzte Schritt (danach folgt oft noch AI-Beschreibung) -- dort direkt einzubetten würde das Bild unnötig zweimal neu schreiben. Nur aktivieren, wenn dieses Foto hier wirklich fertig bearbeitet ist. Bettet bei Aktivierung immer den KOMPLETTEN aktuellen .xmp-Stand ein (GPS+Ort+ggf. schon vorhandene AI-Beschreibung), nicht nur die GPS-Daten. Videos bekommen immer nur den Sidecar, nie eine Direktänderung.">ⓘ</span>
+        </label>
+      </div>
+
+      {% if not geo_cfg.any_geocoder_configured %}
+      <p class="hint warn">Hinweis: Kein Reverse-Geocoding-Server konfiguriert (PHOTON_SERVER /
+      NOMINATIM_SERVER / PELIAS_SERVER) — Positionen werden gefunden, aber keine Orte aufgelöst.</p>
+      {% endif %}
+
+      <div class="actions-row">
+        <button type="submit" class="btn-primary">Vorschau laden</button>
+        <span id="browse-spinner" class="htmx-indicator spinner">lädt…</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" id="file-list">
+    <p class="muted">Pfad wählen und „Vorschau laden" klicken.</p>
+  </section>
+
+  <section class="panel" id="results-panel"></section>
+</main>
+
+<script>
+function gpsApp() {
+  return {
+    selected: {},
+    _lastPathKey(name) { return 'metadata-suite:lastpath:' + name; },
+    _lastPathFor(name) {
+      try { return localStorage.getItem(this._lastPathKey(name)); } catch (e) { return null; }
+    },
+    _setLastPathFor(name, value) {
+      try { localStorage.setItem(this._lastPathKey(name), value); } catch (e) {}
+    },
+    _clearLastPathFor(name) {
+      try { localStorage.removeItem(this._lastPathKey(name)); } catch (e) {}
+    },
+    // --- Which Basis-Ordner was last used, ACROSS ALL MODULES -- so opening a
+    // different module (Timestamp, GPS Sidecar, ...) picks up the same Basis-Ordner
+    // (and, via _lastPathFor above, the same path) you were just working with,
+    // instead of always starting back at whichever root happens to be listed first. ---
+    _lastRootKey() { return 'metadata-suite:lastroot'; },
+    _lastRoot() {
+      try { return localStorage.getItem(this._lastRootKey()); } catch (e) { return null; }
+    },
+    _setLastRoot(name) {
+      try { localStorage.setItem(this._lastRootKey(), name); } catch (e) {}
+    },
+    selectRootFolder(selectEl, persist = true) {
+      const opt = selectEl.selectedOptions[0];
+      if (!opt) return;
+      const saved = this._lastPathFor(opt.text);
+      document.getElementById('f-path').value = saved || opt.value;
+      document.getElementById('f-type_filter').value = opt.dataset.type || 'ALL';
+      document.getElementById('path-suggestions').innerHTML = '';
+      if (persist) this._setLastRoot(opt.text);
+    },
+    onPathInput(inputEl) {
+      const sel = document.getElementById('root-folder-select');
+      const opt = sel.selectedOptions[0];
+      if (!opt) return;
+      const val = inputEl.value.trim();
+      if (val === '') {
+        inputEl.value = opt.value;
+        this._clearLastPathFor(opt.text);
+      } else {
+        this._setLastPathFor(opt.text, val);
+      }
+      this._setLastRoot(opt.text);
+    },
+    goUpOneLevel() {
+      // Jumps the Pfad field one folder level up -- but never above the selected
+      // Basis-Ordner's own path, same containment rule the server enforces anyway.
+      const input = document.getElementById('f-path');
+      const sel = document.getElementById('root-folder-select');
+      const opt = sel.selectedOptions[0];
+      const rootPath = (opt ? opt.value : '').replace(/\/+$/, '');
+      const val = input.value.trim().replace(/\/+$/, '');
+      if (!val || val === rootPath) return;
+      const idx = val.lastIndexOf('/');
+      let parent = idx > 0 ? val.slice(0, idx) : '/';
+      if (!(parent === rootPath || parent.startsWith(rootPath + '/'))) {
+        parent = rootPath;
+      }
+      input.value = parent;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+    initLastPath() {
+      const sel = document.getElementById('root-folder-select');
+      if (!sel) return;
+      {% if prefill_path %}
+      // Arrived via the "Weiter zu GPS Sidecar" handoff from the Timestamp module --
+      // use that path for this one load, remember its Basis-Ordner as the globally
+      // last-used one too (so a later module picks it up in turn), and load the
+      // preview right away instead of making the maintainer click "Vorschau laden" again for
+      // the very folder he just finished processing. (x-init runs initLastDepth()
+      // before this, so the restored Tiefe is already in the field by the time this
+      // submits, not the default.)
+      //
+      // IMPORTANT: this x-init code runs synchronously as soon as Alpine's own
+      // <script defer> executes, which happens BEFORE the page's "DOMContentLoaded"
+      // event -- and htmx only wires up #browse-form's hx-post (so Submitting it
+      // actually fires an AJAX request instead of a real full-page form submit) once
+      // DOMContentLoaded has fired. Calling requestSubmit() directly here would hit
+      // the form before htmx has attached to it at all, causing a native browser
+      // navigation to a bare, un-styled fragment response instead of an htmx swap --
+      // exactly the "nothing happens, then an empty page" bug the maintainer reported. Waiting
+      // for htmx's own "htmx:load" event (which it fires only after it has finished
+      // processing the page) guarantees the form is already wired up by the time this
+      // actually submits.
+      const opt = sel.selectedOptions[0];
+      if (opt) this._setLastRoot(opt.text);
+      document.body.addEventListener('htmx:load', function () {
+        document.getElementById('browse-form').requestSubmit();
+      }, { once: true });
+      return;
+      {% endif %}
+      // Pick up the Basis-Ordner last used in ANY module (not just whichever one is
+      // listed first here), then restore whatever path was last used for it.
+      const lastRoot = this._lastRoot();
+      if (lastRoot) {
+        const match = Array.from(sel.options).find(o => o.text === lastRoot);
+        if (match) match.selected = true;
+      }
+      this.selectRootFolder(sel, false);
+    },
+    toggleAll(checked) {
+      document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = checked);
+    },
+    // --- Tiefe, shared ACROSS ALL MODULES for the rest of this browser session only
+    // (sessionStorage, not localStorage) -- so switching modules keeps whatever Tiefe
+    // you just picked, but a fresh browser/tab restart always starts back at 0. ---
+    _lastDepthKey() { return 'metadata-suite:lastdepth'; },
+    _setLastDepth(value) {
+      try { sessionStorage.setItem(this._lastDepthKey(), value); } catch (e) {}
+    },
+    initLastDepth() {
+      let saved;
+      try { saved = sessionStorage.getItem(this._lastDepthKey()); } catch (e) { saved = null; }
+      if (saved !== null && saved !== '') document.getElementById('f-depth').value = saved;
+    }
+  }
+}
+</script>
+</body>
+</html>

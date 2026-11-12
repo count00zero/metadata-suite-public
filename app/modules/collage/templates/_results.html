@@ -1,0 +1,27 @@
+<h2>Ergebnis</h2>
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% elif cancelled_info %}
+<p class="cancelled-info">⏹ {{ cancelled_info }}</p>
+{% endif %}
+{% if results|length == 0 and not error %}
+<p class="muted">Keine Collagen ausgewählt.</p>
+{% elif results %}
+{# See timestamp_tool's _results.html for why this OOB swap exists. #}
+<button type="button" class="btn-primary btn-execute" id="exec-btn" disabled hx-swap-oob="true"
+        title="Bereits ausgeführt -- „Collagen suchen" erneut klicken, um diese Collagen erneut zu verarbeiten.">
+  ✓ Ausgeführt
+</button>
+{% set created = results | selectattr("status", "equalto", "created") | list | length %}
+{% set skipped = results | selectattr("status", "equalto", "skipped_exists") | list | length %}
+{% set no_images = results | selectattr("status", "equalto", "no_images") | list | length %}
+{% set failed = results | selectattr("status", "equalto", "error") | list | length %}
+{% set placed = results | sum(attribute="placed_count") %}
+{% set img_skipped = results | sum(attribute="skipped_count") %}
+<p class="hint">{{ created }} erstellt, {{ skipped }} übersprungen (existierten bereits), {{ no_images }} ohne Bilder, {{ failed }} fehlgeschlagen. Bilder: {{ placed }} platziert, {{ img_skipped }} übersprungen.</p>
+<div class="rows">
+  {% for r in results %}
+  {% with r = r %}{% include "_result_row.html" %}{% endwith %}
+  {% endfor %}
+</div>
+{% endif %}

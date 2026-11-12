@@ -1,0 +1,32 @@
+{% if error %}
+<p class="error">⚠ {{ error }}</p>
+{% else %}
+{% set sv = r.service %}
+<div class="results">
+  {% if r.note %}<p class="hint">{{ r.note }}</p>{% endif %}
+  {% if sv %}
+  <p class="hint">
+    {% if cancelled or sv.status == 'cancelled' %}⏹ Abgebrochen.
+    {% elif sv.status == 'done' %}✓ {% if r.dry %}Prüfung (nichts abgerufen){% else %}Fertig{% endif %}.
+    {% elif sv.status == 'capped' %}⏸ Obergrenze pro Lauf erreicht (<code>WEATHER_BACKFILL_MAX</code>) — einfach noch einmal starten, schon Archiviertes wird übersprungen.
+    {% elif sv.status == 'rate_limited' %}⏸ Open-Meteo hat das Limit gemeldet (HTTP 429) — später (z. B. morgen) erneut starten, es geht dort weiter, wo es aufgehört hat.
+    {% else %}⚠ {{ sv.status }}{% if sv.error %}: {{ sv.error }}{% endif %}{% endif %}
+  </p>
+  <ul class="skip-list">
+    {% if r.files %}<li>{{ r.files }} Foto-/Videodatei(en) gelesen, davon {{ r.points }} mit Zeit und GPS</li>{% endif %}
+    {% if sv.track_points %}<li>{{ sv.track_points }} Track-Punkte gelesen</li>{% endif %}
+    <li>{{ sv.needed_cell_days }} verschiedene Orte×Tage (Zellen zu 0,1° ≈ 11 km)</li>
+    {% set c = sv.counts %}
+    {% if r.dry %}
+    <li>{{ c.missing }} fehlen noch bzw. würden neu geholt · {{ c.cached }} bleiben unverändert · {{ c.recent }} liegen in der Zukunft (werden nicht archiviert)</li>
+    {% else %}
+    <li>{{ c.fetched }} neu von Open-Meteo geholt · {{ c.cached }} waren schon im Archiv{% if c.recent %} · {{ c.recent }} liegen in der Zukunft{% endif %}{% if c.empty %} · {{ c.empty }} ohne Daten{% endif %}{% if c.failed %} · <strong>{{ c.failed }} fehlgeschlagen</strong>{% endif %}</li>
+    {% endif %}
+  </ul>
+  {% endif %}
+  {% if r.stats and r.stats.archive %}
+  {% set a = r.stats.archive %}
+  <p class="hint">Archiv gesamt: {{ a.archived_days }} Tage an {{ a.cells }} Zelle(n){% if a.first_day %}, {{ a.first_day }} bis {{ a.last_day }}{% endif %}.</p>
+  {% endif %}
+</div>
+{% endif %}

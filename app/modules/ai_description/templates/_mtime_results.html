@@ -1,0 +1,18 @@
+{% if results|length == 0 %}
+<p class="muted">Nichts zu tun.</p>
+{% else %}
+<div class="rows">
+  {% for r in results %}
+  <div class="result-row {% if r.error %}result-error{% elif r.changed %}result-ok{% endif %}">
+    <div class="orig" title="{{ r.path }}">{{ r.path.split('/')[-1] }}</div>
+    {% if r.changed %}
+    <div class="ok-line">✓ Zeitstempel zurückgesetzt auf {{ r.restored_to }} (Quelle: {{ r.source }})</div>
+    {% elif r.error %}
+    <div class="error-line">⚠ {{ r.error }}</div>
+    {% else %}
+    <div class="muted">– bereits korrekt oder kein Datum ermittelbar (weder Dateiname noch EXIF)</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

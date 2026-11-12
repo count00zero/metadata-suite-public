@@ -1,0 +1,48 @@
+# Dockerfile.media -- ffmpeg + ffprobe + mediainfo from the official source tarballs, built ONCE and kept as a small image
+# (`FROM scratch`, only /opt/media/bin) tagged with the versions: metadata-suite-media:ffmpeg<v>-mediainfo<v>.
+# The app Dockerfile takes the binaries from it (COPY --from=), so a cache prune or an image cleanup can never again
+# trigger the 6-minute compile. Built by build_start.sh only when that tag is missing (or by hand, see below).
+#   build:    docker compose --profile tools build media-tools
+#   upgrade:  set FFMPEG_VERSION / MEDIAINFO_VERSION in .env, then run build_start.sh (new tag -> built once)
+# ---- the build ---------------------------------------------------------------------------------
+# Debian's packages lag far behind (ffmpeg 7.1 / mediainfo 24.x there). Both tools are built here, pinned
+# by ARG, and the build FAILS if the result reports a different version -- the image can never silently
+# contain another one. Only the finished binaries are copied into the final image (see stage 2).
+#   upgrade:  docker compose build --build-arg FFMPEG_VERSION=9.0.3 --build-arg MEDIAINFO_VERSION=26.11
+#   check:    docker compose exec metadata-suite sh -c 'ffmpeg -version | head -1; mediainfo --Version'
+# Optional FFMPEG_SHA256 / MEDIAINFO_SHA256 additionally pin the tarball content.
+# ffmpeg is built static (no libav* .so to ship) with only what this app needs: decode any camera format
+# (native h264/hevc/prores/..., libdav1d for AV1), scale, encode MJPEG; no encoders/docs/ffplay.
+FROM python:3.13-slim AS build
+ARG FFMPEG_VERSION=9.0.2
+ARG MEDIAINFO_VERSION=26.10
+ARG FFMPEG_SHA256=""
+ARG MEDIAINFO_SHA256=""
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential nasm pkg-config curl ca-certificates xz-utils \
+        zlib1g-dev libdav1d-dev autoconf automake libtool \
+ && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL -o /tmp/ffmpeg.tar.xz "https://www.ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
+ && if [ -n "${FFMPEG_SHA256}" ]; then echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; fi \
+ && mkdir /tmp/ffmpeg-src && tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg-src --strip-components=1 \
+ && cd /tmp/ffmpeg-src \
+ && ./configure --prefix=/opt/media --enable-static --disable-shared --enable-pic \
+        --disable-doc --disable-ffplay --enable-libdav1d --disable-debug \
+ && make -j"$(nproc)" && make install \
+ && test "$(/opt/media/bin/ffmpeg -version | sed -n '1s/^ffmpeg version \([^ ]*\).*/\1/p')" = "${FFMPEG_VERSION}" \
+ && test "$(/opt/media/bin/ffprobe -version | sed -n '1s/^ffprobe version \([^ ]*\).*/\1/p')" = "${FFMPEG_VERSION}" \
+ && rm -rf /tmp/ffmpeg.tar.xz /tmp/ffmpeg-src
+RUN curl -fsSL -o /tmp/mediainfo.tar.xz \
+        "https://mediaarea.net/download/binary/mediainfo/${MEDIAINFO_VERSION}/MediaInfo_CLI_${MEDIAINFO_VERSION}_GNU_FromSource.tar.xz" \
+ && if [ -n "${MEDIAINFO_SHA256}" ]; then echo "${MEDIAINFO_SHA256}  /tmp/mediainfo.tar.xz" | sha256sum -c -; fi \
+ && mkdir /tmp/mediainfo-src && tar -xJf /tmp/mediainfo.tar.xz -C /tmp/mediainfo-src --strip-components=1 \
+ && cd /tmp/mediainfo-src && ./CLI_Compile.sh \
+ && cd MediaInfo/Project/GNU/CLI && make install DESTDIR=/opt/mediainfo-root \
+ && install -D /opt/mediainfo-root/usr/local/bin/mediainfo /opt/media/bin/mediainfo \
+ && /opt/media/bin/mediainfo --Version | grep -F "v${MEDIAINFO_VERSION}" \
+ && rm -rf /tmp/mediainfo.tar.xz /tmp/mediainfo-src /opt/mediainfo-root
+
+
+# ---- the kept image: only the finished binaries ----------------------------------------------------
+FROM scratch
+COPY --from=build /opt/media/bin/ /opt/media/bin/

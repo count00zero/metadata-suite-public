@@ -1,0 +1,62 @@
+<h2>Ergebnis</h2>
+{% if cancelled_info %}<p class="warning">⚠ {{ cancelled_info }}</p>{% endif %}
+{% if results|length == 0 %}
+<p class="muted">Keine Dateien ausgewählt.</p>
+{% else %}
+{# Grey out the "Ausführen" button in #file-list via out-of-band swap now that these
+   files have actually been processed -- #file-list itself is never re-rendered by this
+   response (hx-target="#results-panel" is a separate panel), so without this the button
+   stays clickable and inviting a second, redundant run of the exact same selection.
+   "Vorschau laden"/"Scannen" erneut klicken replaces it with a fresh, enabled one. #}
+<button type="button" class="btn-primary btn-execute" id="exec-btn" disabled hx-swap-oob="true"
+        title="Bereits ausgeführt -- „Vorschau laden" erneut klicken, um diese Dateien erneut zu verarbeiten.">
+  ✓ Ausgeführt
+</button>
+<div class="rows">
+  {% for r in results %}
+  <div class="result-row {% if r.error or r.exif_error %}result-error{% else %}result-ok{% endif %}">
+    <div class="orig" title="{{ r.path }}">{{ r.path.split('/')[-1] }}</div>
+    {% if r.renamed_to %}<div class="ok-line">✓ umbenannt → {{ r.renamed_to.split('/')[-1] }}</div>{% endif %}
+    {% if r.exif_written %}<div class="ok-line">✓ EXIF geschrieben</div>{% endif %}
+    {% if r.rotation %}<div class="ok-line">{{ r.rotation }}</div>{% endif %}
+    {% if r.rotation_error %}<div class="warn">⚠ Drehen: {{ r.rotation_error }}</div>{% endif %}
+    {% if r.touched %}<div class="ok-line">✓ Zeitstempel gesetzt</div>{% endif %}
+    {% if r.exif_note %}<div class="warn">ℹ {{ r.exif_note }}</div>{% endif %}
+    {% if r.exif_sidecar_note %}<div class="ok-line">{{ r.exif_sidecar_note }}</div>{% endif %}
+    {% if r.xmp_touched %}<div class="ok-line">✓ .xmp-Zeitstempel gesetzt</div>{% endif %}
+    {% if r.exif_error %}<div class="error-line">⚠ EXIF: {{ r.exif_error }}</div>{% endif %}
+    {% if r.error %}<div class="error-line">⚠ {{ r.error }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if written_paths %}
+  {% if auto_mtime_results is not none %}
+  <p class="hint">🕒 <code>RESTORE_TIMESTAMP=true</code>: Zeitstempel automatisch geprüft/wiederhergestellt.</p>
+  {% with results = auto_mtime_results %}{% include "_mtime_results.html" %}{% endwith %}
+  {% else %}
+  <form hx-post="/timestamp/restore-mtime/start" hx-target="#mtime-results" hx-swap="innerHTML" hx-indicator="#mtime-spinner">
+    {% for p in written_paths %}
+    <input type="hidden" name="paths" value="{{ p }}">
+    {% endfor %}
+    <div class="actions-row">
+      <button type="submit" class="btn-ghost">🕒 Datei-Zeitstempel wiederherstellen</button>
+      <span id="mtime-spinner" class="htmx-indicator spinner">wird gesetzt…</span>
+    </div>
+  </form>
+  <div id="mtime-results"></div>
+  {% endif %}
+{% endif %}
+
+<div class="actions-row">
+  {% if handoff_id %}
+  <a class="btn-ghost" href="/gps/?handoff_id={{ handoff_id }}">
+    Weiter zu GPS Sidecar →
+  </a>
+  {% else %}
+  <a class="btn-ghost" href="/gps/?path={{ handoff_path | urlencode }}&root_path={{ handoff_root_path | urlencode }}">
+    Weiter zu GPS Sidecar →
+  </a>
+  {% endif %}
+</div>
+{% endif %}

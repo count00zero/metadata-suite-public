@@ -1,0 +1,17 @@
+# Weekly check of the pinned Python packages against known vulnerabilities (pip-audit / PyPA advisory database).
+# A red run = a pinned version has a published security advisory: update it (Dependabot normally already has a PR).
+name: audit
+on:
+  schedule: [{cron: "17 5 * * 1"}]
+  workflow_dispatch:
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.13"}
+      - run: pip install pip-audit
+      - run: pip-audit -r requirements.txt
+      - run: pip-audit -r geo-service/requirements.txt

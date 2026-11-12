@@ -1,0 +1,13 @@
+# Real settings -- copy .env.example to .env, never commit the real one.
+.env
+
+# Runtime data (presets persist here via the docker-compose volume mount).
+config/*.json
+!config/*.example.json
+config/*.sqlite*
+
+__pycache__/
+*.pyc
+
+# tar copies of the kept ffmpeg/mediainfo image (ensure_media_image.sh)
+media-images/

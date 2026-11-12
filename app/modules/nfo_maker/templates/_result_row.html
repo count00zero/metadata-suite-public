@@ -1,0 +1,28 @@
+<div class="result-row {% if r.error %}result-error{% elif r.nfo_written or r.skipped %}result-ok{% endif %}" id="{{ r.row_id }}">
+  <div class="rows">
+    <div class="row">
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+          {% if r.nfo_written %}<span class="meta-label">✓ .nfo erstellt{% if r.vsource %} ({{ r.vsource }}){% endif %}</span>
+          {% elif r.skipped %}<span class="meta-label">übersprungen ({{ r.skip_reason }})</span>
+          {% elif r.error %}<span class="meta-label">⚠ Fehler</span>
+          {% endif %}
+        </div>
+        {% if r.error %}<div class="warn">⚠ {{ r.error }}</div>{% endif %}
+        {% if r.thumb_written %}<div class="source-badge">✓ poster/fanart/thumb.jpg erstellt</div>{% endif %}
+        {% if r.geo_summary %}<div class="source-badge">📍 {{ r.geo_summary }}</div>{% endif %}
+        {% if r.ai_used %}<div class="source-badge">✓ AI-Beschreibung aus .xmp-Sidecar übernommen</div>{% endif %}
+        {% if r.ai_note %}<div class="source-badge">{{ r.ai_note }}</div>{% endif %}
+      </div>
+      {% if r.nfo_written or r.skipped %}
+      <form hx-post="/nfo/regenerate" hx-target="#{{ r.row_id }}" hx-swap="outerHTML" hx-include="#browse-form">
+        <input type="hidden" name="video_path" value="{{ r.path }}">
+        <button type="submit" class="btn-ghost">🔀 Neu erzeugen</button>
+        <span class="htmx-indicator spinner">wird erstellt…</span>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>

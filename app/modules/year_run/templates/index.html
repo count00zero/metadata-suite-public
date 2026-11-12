@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jahreslauf — Metadata Suite</title>
+<script defer src="/static/htmx.min.js"></script>
+<script defer src="/static/clear-results.js"></script>
+<script src="/static/safe-observer.js"></script>
+<script defer src="/static/alpine.min.js"></script>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/favicon-192.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>📅 Jahreslauf</h1>
+  <nav class="modules-nav">
+    <a class="module-pill info-pill" href="/" title="Start (Dashboard)" aria-label="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/></svg></a>
+    <a class="module-pill" href="/timestamp/">Timestamp</a>
+    <a class="module-pill" href="/gps/">GPS Sidecar</a>
+    <a class="module-pill" href="/gpsfill/">GPS füllen</a>
+    <a class="module-pill" href="/geooverrides/">Geo-Overrides</a>
+    <a class="module-pill" href="/ctxfill/">Kontext nachfüllen</a>
+    <a class="module-pill" href="/ai/">AI-Beschreibung</a>
+    <a class="module-pill" href="/nfo/">NFO Maker</a>
+    <a class="module-pill" href="/collage/">Collage</a>
+    <a class="module-pill" href="/mtime/">Datei-Zeitstempel</a>
+    <a class="module-pill" href="/shortvideos/">Kurzvideos löschen</a>
+    <span class="module-pill active">Jahreslauf</span>
+    <a class="module-pill info-pill" href="/endpoints/" title="Endpunkte des geo-service (Links mit deinen Beispielorten)" aria-label="Endpunkte"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></a>
+    <a class="module-pill info-pill" href="/docs/" title="Dokumentation (README)" aria-label="Dokumentation"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 7.5h6"/><path d="M9.5 11h6"/></svg></a>
+    <a class="module-pill info-pill" href="/info/" title="Info: Versionen, Umgebung, Pfade" aria-label="Info"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></a>
+  </nav>
+</header>
+
+<main x-data="{ started: false }">
+  <section class="panel">
+    <form id="year-form" hx-post="/year/preview" hx-target="#year-out" hx-indicator="#year-spinner">
+      <div class="field-grid">
+        <div class="path-row">
+          <label>
+            <span class="label-text">Jahr</span>
+            <input type="number" name="year" min="1900" max="2200" value="{{ year }}" style="width: 6em" required>
+          </label>
+          <label>
+            <span class="label-text">Monat
+              <span class="info-icon" tabindex="0" title="Ganzes Jahr oder nur ein Monat: Dann werden die Monatsordner Foto/&lt;Jahr&gt;/&lt;Jahr.MM&gt; und Video/&lt;Jahr&gt;/&lt;Jahr.MM&gt; gleichzeitig verarbeitet (z. B. 2026/2026.11). Urlaube-Ordner haben keine Monatsebene und entfallen dann.">ⓘ</span></span>
+            <select name="month">
+              <option value="0">ganzes Jahr</option>
+              {% for m in range(1, 13) %}<option value="{{ m }}">{{ '%02d' % m }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>
+            <span class="label-text">Typ
+              <span class="info-icon" tabindex="0" title="Nur Fotos, nur Videos oder beides (wie -t im Skript).">ⓘ</span></span>
+            <select name="kind">
+              <option value="all">Fotos + Videos</option>
+              <option value="image">nur Fotos</option>
+              <option value="video">nur Videos</option>
+            </select>
+          </label>
+          <label>
+            <span class="label-text">Ordner
+              <span class="info-icon" tabindex="0" title="Normale Jahresordner, Urlaube-Jahresordner oder beide (wie -s im Skript).">ⓘ</span></span>
+            <select name="scope">
+              <option value="all">normal + Urlaube</option>
+              <option value="regular">nur normale</option>
+              <option value="urlaub">nur Urlaube</option>
+            </select>
+          </label>
+          <label>
+            <span class="label-text">Tiefe
+              <span class="info-icon" tabindex="0" title="Wie viele Ordnerebenen unter dem Jahresordner durchsucht werden (0-7, Standard 7 wie im Skript).">ⓘ</span></span>
+            <input type="number" name="depth" min="0" max="7" value="7" style="width: 5em">
+          </label>
+          <label>
+            <span class="label-text">Zeitzone (Fallback)</span>
+            <input type="text" name="default_tz" value="{{ default_tz }}" style="width: 11em">
+          </label>
+        </div>
+      </div>
+
+      <fieldset class="year-fieldset">
+        <legend>Schritte pro Ordner (laufen von oben nach unten)</legend>
+        <div class="step-grid">
+          {% for s in step_order %}
+          <label class="step-chip">
+            <input type="checkbox" name="steps" value="{{ s }}" {% if s in default_steps %}checked{% endif %} {% if s == 'mtime' %}disabled title="läuft immer zuletzt"{% endif %}>
+            <span class="step-no">{{ loop.index }}</span>
+            <span class="step-text">{{ step_labels[s] }}
+              {% if s == 'nfo' %}<small>nur Videos</small>{% elif s == 'collage' %}<small>nur Foto-Urlaube</small>{% elif s == 'mtime' %}<small>läuft immer zuletzt – auch bei Abbruch (mit OK)</small>{% endif %}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="year-fieldset">
+        <legend>Optionen für den ganzen Lauf</legend>
+        <div class="step-grid">
+          <label class="step-chip">
+            <input type="checkbox" name="recheck" value="1">
+            <span class="step-text">Alles neu prüfen
+              <small>Schritte nicht überspringen, auch wenn der Ordner seit dem letzten Lauf unverändert ist</small></span>
+          </label>
+          <label class="step-chip">
+            <input type="checkbox" name="aim" value="1">
+            <span class="step-text">AIM
+              <small>AI-Beschreibungen im ganzen Ordner nachfüllen, bei Videos zusätzlich .nfo reparieren</small></span>
+          </label>
+          <label class="step-chip">
+            <input type="checkbox" name="fixbad" value="1">
+            <span class="step-text">KI-Müll reparieren
+              <small>Unbrauchbare KI-Beschreibungen finden (Absagen, Denk-Text, Wiederholungen, Englisch, abgeschnitten) und neu erzeugen; bei Videos auch die .nfo</small></span>
+          </label>
+          <label class="step-chip">
+            <input type="checkbox" name="backfill" value="1">
+            <span class="step-text">Neue Daten nachtragen
+              <small>Fehlende Daten (z. B. Wetter, Währung) nachtragen – danach AI-Beschreibung und, bei Videos, .nfo nur für die Dateien neu erzeugen, die neue Daten bekamen (auch aus einem früheren, abgebrochenen Lauf)</small></span>
+          </label>
+        </div>
+      </fieldset>
+
+      <p class="hint">Verarbeitet bis zu vier Ordner: <code>Foto/&lt;Jahr&gt;</code>, <code>Foto/Urlaube/&lt;Jahr&gt;</code>, <code>Video/&lt;Jahr&gt;</code>, <code>Video/Urlaube/&lt;Jahr&gt;</code>
+      (Basis-Ordner aus <code>ROOT_FOLDERS</code>). Pro Ordner laufen die gewählten Schritte automatisch nacheinander, wie im Skript <code>Media_actualyear_nfo_Creator.sh</code>;
+      „Kontext nachfüllen“ und „Datei-Zeitstempel“ sind Ergänzungen. Es wird nur <em>Fehlendes</em> ergänzt, bereits Erledigtes wird übersprungen.</p>
+
+      <div class="actions-row">
+        <button type="submit" class="btn-primary">Vorschau</button>
+        <span id="year-spinner" class="htmx-indicator spinner">zählt…</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" id="year-out">
+    {% if running_id %}
+    <div hx-get="/year/run/{{ running_id }}" hx-trigger="load" hx-target="this" hx-swap="outerHTML"><p class="muted">Ein Jahreslauf läuft gerade – lade Fortschritt…</p></div>
+    {% else %}
+    <p class="muted">Jahr wählen und „Vorschau“ klicken.</p>
+    {% endif %}
+  </section>
+</main>
+<script>
+  /* Jahreslauf log: after each refresh stay at the newest line - but only if the reader was at the bottom already. */
+  (function () {
+    var atBottom = true;
+    function pre() { return document.querySelector('pre[id^="yr-pre-"]'); }
+    document.body.addEventListener('htmx:beforeSwap', function () {
+      var p = pre(); if (p) { atBottom = p.scrollHeight - p.scrollTop - p.clientHeight < 24; }
+    });
+    document.body.addEventListener('htmx:afterSettle', function () {
+      var p = pre(); if (p && atBottom) { p.scrollTop = p.scrollHeight; }
+    });
+  })();
+</script>
+</body>
+</html>

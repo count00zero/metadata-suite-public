@@ -1,0 +1,14 @@
+{% if not rows %}
+<p class="muted">Keine externen Dienste konfiguriert (Traccar, Dawarich, Photon, Nominatim, Pelias, Maritime, Ollama).</p>
+{% else %}
+<div class="info-table">
+  {% for r in rows %}
+  <div class="info-row">
+    <span class="dot {{ 'ok' if r.ok else 'bad' }}"></span>
+    <span class="info-k">{{ r.name }}</span>
+    <span class="info-v mono">{{ r.url }}</span>
+    <span class="info-badge {{ 'ok' if r.ok else 'bad' }}">{{ 'erreichbar' if r.ok else 'nicht erreichbar' }} · {{ r.detail }} · {{ r.ms }} ms</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

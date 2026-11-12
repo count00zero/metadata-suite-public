@@ -1,0 +1,21 @@
+{% if results|length == 0 %}
+<p class="muted">Keine Videos ausgewählt (die Auswahl enthielt keine &lt;10s-Videos, oder nichts war angehakt).</p>
+{% else %}
+<div class="results">
+  <p class="hint">{{ results|length }} Video(s) zur Löschung verarbeitet.</p>
+  {% for r in results %}
+  <div class="row {% if r.status == 'error' %}row-warn{% endif %}">
+    <div class="meta">
+      <div class="meta-row">
+        <span class="orig" title="{{ r.path }}">{{ r.filename }}</span>
+        {% if r.status == "deleted" %}<span class="meta-label">🗑 gelöscht</span>
+        {% elif r.status == "skipped" %}<span class="meta-label">⏭ übersprungen</span>
+        {% else %}<span class="meta-label">⚠ Fehler</span>{% endif %}
+      </div>
+      <div class="meta-row"><span class="meta-label">{{ r.message }}</span></div>
+    </div>
+  </div>
+  {% endfor %}
+  <p class="hint">Hinweis: ein geteiltes <code>folder.jpg</code> im selben Ordner wird nie mitgelöscht. „Scannen" erneut klicken, um die Liste zu aktualisieren.</p>
+</div>
+{% endif %}

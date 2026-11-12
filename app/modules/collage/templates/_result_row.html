@@ -1,0 +1,35 @@
+<div class="result-row {% if r.status == 'error' %}result-error{% elif r.status in ('created', 'skipped_exists') %}result-ok{% endif %}" id="{{ r.row_id }}">
+  <div class="rows">
+    <div class="row">
+      <img class="thumb" loading="lazy" src="/timestamp/thumb?path={{ r.output_path | urlencode }}" alt="">
+      <div class="meta">
+        <div class="meta-row">
+          <span class="orig" title="{{ r.trip_path }}">{{ r.trip_name }}</span>
+          {% if r.status == "created" %}<span class="meta-label">✓ erstellt{% if r.layout_used %} ({{ r.layout_used }}, {{ r.image_count }} Bild(er)){% endif %}</span>
+          {% if r.layout_used %}<span class="meta-label">{{ r.placed_count }} platziert{% if r.skipped_count %}, {{ r.skipped_count }} übersprungen{% if r.unreadable_count %} (davon {{ r.unreadable_count }} nicht lesbar){% endif %}{% endif %}</span>{% endif %}
+          {% elif r.status == "skipped_exists" %}<span class="meta-label">übersprungen (existiert bereits)</span>
+          {% elif r.status == "no_images" %}<span class="meta-label">keine Bilder gefunden</span>
+          {% elif r.status == "error" %}<span class="meta-label">⚠ Fehler</span>
+          {% endif %}
+        </div>
+        {% if r.error %}<div class="warn">⚠ {{ r.error }}</div>{% endif %}
+        {% if r.folder_jpg_copied %}<div class="source-badge">✓ als folder.jpg übernommen</div>{% endif %}
+        {% if r.mirrored_path %}<div class="source-badge">✓ nach Home-Video gespiegelt: {{ r.mirrored_path }}</div>{% endif %}
+        {% if r.mirror_note %}<div class="source-badge">{{ r.mirror_note }}</div>{% endif %}
+        {% if r.metadata_source %}<div class="source-badge">Metadaten kopiert von {{ r.metadata_source.split('/')[-1] }}{% if r.mtime_restored %} — Zeitstempel wiederhergestellt{% endif %}</div>{% endif %}
+        {% if r.metadata_note and not r.metadata_source %}<div class="source-badge">{{ r.metadata_note }}</div>{% endif %}
+      </div>
+      {% if r.status in ("created", "skipped_exists") %}
+      <form hx-post="/collage/regenerate" hx-target="#{{ r.row_id }}" hx-swap="outerHTML">
+        <input type="hidden" name="trip_path" value="{{ r.trip_path }}">
+        <input type="hidden" name="trip_name" value="{{ r.trip_name }}">
+        <input type="hidden" name="trip_output_path" value="{{ r.output_path }}">
+        <input type="hidden" name="trip_image_count" value="{{ r.image_count }}">
+        <input type="hidden" name="settings_json" value='{{ settings_json }}'>
+        <button type="submit" class="btn-ghost">🔀 Neu erzeugen</button>
+        <span class="htmx-indicator spinner">wird erstellt…</span>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>

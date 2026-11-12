@@ -1,0 +1,64 @@
+# Runs both test suites on every push to main and on every pull request (Dependabot PRs included):
+# merge an update only when this is green.  Same commands as locally: python tests/run_all.py
+name: tests
+on:
+  push: {branches: [main]}
+  pull_request:
+  workflow_dispatch:
+
+concurrency:                      # a newer push cancels the run still going for the older one
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  suite:
+    name: metadata-suite (tests/run_all.py)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: System tools (exiftool, exiftran, mediainfo, ffmpeg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libimage-exiftool-perl exiftran mediainfo ffmpeg
+      - name: Python packages
+        run: |
+          pip install -r requirements.txt
+          pip install httpx httpx2 pyyaml playwright
+          playwright install --with-deps chromium
+      - name: Tests
+        run: python tests/run_all.py
+
+  geo-service:
+    name: geo-service (geo-service/tests/run_all.py)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: geo-service
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: geo-service/requirements-dev.txt
+      - name: System tools (exiftool, ffmpeg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libimage-exiftool-perl ffmpeg
+      - name: Python packages
+        run: |
+          pip install -r requirements-dev.txt
+          pip install pillow pyyaml playwright
+          playwright install --with-deps chromium
+      - name: Tests
+        run: python tests/run_all.py

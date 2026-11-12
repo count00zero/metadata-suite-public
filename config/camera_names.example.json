@@ -1,0 +1,33 @@
+{
+  "_comment": "Copy to camera_names.json (or point CAMERA_NAMES_FILE at it). Patterns are case-insensitive fnmatch, matched against the EXIF Model and against 'Make Model' (so 'Sony?DSC-WX300' = 'Sony DSC-WX300'); first matching rule wins and beats NFO Maker's table and the Google device list. All entries below except the first two are the manual device mappings from NFO Maker's CAMERA_SOURCE_RULES (software labels like 'Google Movie'/'Adobe Premiere Pro' left out). Very short patterns ('9','10','6*','12','13','14') match whole values only but are broad -- delete them if they mislabel something.",
+  "rules": [
+    {"match": ["SM-S921B", "SM-S921*"], "name": "Samsung Galaxy S24"},
+    {"match": ["22101316UG"], "name": "Xiaomi Redmi Note 12 Pro+"},
+    {"match": ["iPhone*"], "name": "Apple iPhone"},
+    {"match": ["DVCAM"], "name": "DV-Cam alt (SD)"},
+    {"match": ["DV"], "name": "DV-Cam alt (SD)"},
+    {"match": ["GoPro*"], "name": "GoPro Hero 7"},
+    {"match": ["DJI OsmoAction3"], "name": "DJI Osmo Action 3"},
+    {"match": ["9", "8?0?0", "10", "6*"], "name": "Altes Android Smartphone"},
+    {"match": ["Xiaomi*", "14", "13"], "name": "Xiaomi Smartphone"},
+    {"match": ["TG?6"], "name": "Olympus TG-6"},
+    {"match": ["OLYMPUS*"], "name": "Olympus Digicam alt"},
+    {"match": ["12", "Samsung?SM-A53*"], "name": "Samsung Galaxy A53"},
+    {"match": ["Galaxy S24", "SM-S92*", "SM-S721*"], "name": "Samsung Galaxy S24"},
+    {"match": ["Sony?DSC-WX300"], "name": "Sony DSC-WX300"},
+    {"match": ["Sony?DSC-HX9V"], "name": "Sony DSC-HX9V"},
+    {"match": ["Sony?PSP"], "name": "Sony DSC-HX90V"},
+    {"match": ["SANYO*"], "name": "SANYO DIGITAL CAMERA"},
+    {"match": ["FUJI*"], "name": "FUJI Camera (old)"},
+    {"match": ["Canon*"], "name": "Canon Camera (old)"},
+    {"match": ["pana"], "name": "Panasonic DMC-FX37"},
+    {"match": ["DMC-FZ1000"], "name": "Panasonic DMC-FZ1000"},
+    {"match": ["3GPP*"], "name": "Uraltes Handy"},
+    {"match": ["NVT-IM", "Ambarell*", "Unknown??icat?"], "name": "Alte Full-HD ActionCam"},
+    {"match": ["TG-6"], "name": "Olympus TG-6"},
+    {"match": ["DJI OsmoAction5 Pro"], "name": "DJI Osmo Action 5 PRO"},
+    {"match": ["DJI OsmoAction6"], "name": "DJI Osmo Action 6"},
+    {"match": ["Insta360 Luna Ultra"], "name": "Insta360 Luna Ultra"},
+    {"match": ["FC9470", "DJI?FC9470", "DJI?Neo?2", "DJI?Neo2"], "name": "DJI Neo 2"}
+  ]
+}

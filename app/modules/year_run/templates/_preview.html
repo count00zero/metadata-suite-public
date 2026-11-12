@@ -1,0 +1,37 @@
+<h3>Vorschau — {{ "Monat" if opts.month else "Jahr" }} {{ opts.title }}</h3>
+<table class="plain">
+  <thead><tr><th>Ordner</th><th>Pfad</th><th>Dateien</th><th>Schritte</th></tr></thead>
+  <tbody>
+  {% for f in folders %}
+    <tr>
+      <td>{{ f.label }}</td>
+      <td class="mono">{{ f.path }}</td>
+      <td>{% if f.exists %}{{ f.files }}{% else %}<span class="muted">Ordner nicht vorhanden</span>{% endif %}</td>
+      <td>{% if f.exists %}{{ folder_steps[f.label]|join(' → ') or '—' }}{% else %}—{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4" class="muted">Keine Ordner für diese Auswahl.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if opts.aim %}<p class="hint">AIM aktiv: AI-Beschreibungen im ganzen Ordner nachfüllen, bei Videos zusätzlich AI-Reparatur der .nfo.</p>{% endif %}
+{% if busy %}
+<p class="error">Es läuft bereits ein Jahreslauf. Neuer Start zeigt dessen Fortschritt.</p>
+{% endif %}
+<form hx-post="/year/start" hx-target="#year-out" hx-swap="innerHTML">
+  <input type="hidden" name="year" value="{{ opts.year }}">
+  <input type="hidden" name="month" value="{{ opts.month }}">
+  <input type="hidden" name="kind" value="{{ opts.kind }}">
+  <input type="hidden" name="scope" value="{{ opts.scope }}">
+  <input type="hidden" name="depth" value="{{ opts.depth }}">
+  <input type="hidden" name="default_tz" value="{{ opts.default_tz }}">
+  {% if opts.aim %}<input type="hidden" name="aim" value="1">{% endif %}
+  {% if opts.recheck %}<input type="hidden" name="recheck" value="1">{% endif %}
+  {% if opts.fixbad %}<input type="hidden" name="fixbad" value="1">{% endif %}
+  {% if opts.backfill %}<input type="hidden" name="backfill" value="1">{% endif %}
+  {% for s in opts.steps %}<input type="hidden" name="steps" value="{{ s }}">{% endfor %}
+  <div class="actions-row">
+    <button type="submit" class="btn-primary" {% if not folders|selectattr('exists')|list %}disabled{% endif %}>Jahreslauf starten</button>
+    <span class="muted">läuft im Hintergrund weiter, auch wenn du die Seite schließt.</span>
+  </div>
+</form>
