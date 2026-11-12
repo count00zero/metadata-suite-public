@@ -11,3 +11,5 @@ __pycache__/
 
 # tar copies of the kept ffmpeg/mediainfo image (ensure_media_image.sh)
 media-images/
+venv/
+.venv/
