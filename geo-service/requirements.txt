@@ -3,5 +3,5 @@ fastapi==0.162.2
 uvicorn[standard]==0.34.0
 requests==2.34.2
 timezonefinder==6.5.7
-tzdata==2025.1
+tzdata==2026.6
 holidays==0.106
