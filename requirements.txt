@@ -4,6 +4,6 @@ jinja2==3.1.6
 python-multipart==0.0.33
 pillow==13.0.0
 timezonefinder==6.5.7
-tzdata==2025.1
+tzdata==2026.6
 requests==2.34.2
 markdown==3.11.3
